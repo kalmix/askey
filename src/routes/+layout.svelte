@@ -25,7 +25,7 @@
 	<link rel="canonical" href="https://askey.vercel.app" />
 	<meta
 		name="description"
-		content="Turn any static or animated image into high-resolution ASCII art with askey. Adjust gradients, colors, dithering, and export to TXT, SVG, PNG, WebP, GIF, APNG, or JSON."
+		content="Convert any static or animated image into ASCII art. Customize gradients, colors, and export to various formats."
 	/>
 	<meta
 		name="keywords"
@@ -35,7 +35,7 @@
 	<meta property="og:title" content="asꄗ · Graphics to ASCII Converter" />
 	<meta
 		property="og:description"
-		content="Upload an image or animation, tweak pro-grade controls, and export crisp ASCII art in your favorite formats."
+		content="Convert any static or animated image into ASCII art. Customize gradients, colors, and export to various formats."
 	/>
 	<meta property="og:type" content="website" />
 	<meta property="og:url" content="https://askey.vercel.app" />
@@ -43,9 +43,9 @@
 	<meta name="twitter:title" content="asꄗ · Graphics to ASCII Converter" />
 	<meta
 		name="twitter:description"
-		content="The pro tool for generating ASCII art from any static or animated image."
+		content="Convert any static or animated image into ASCII art."
 	/>
-	<meta name="theme-color" content="#050505" />
+	<meta name="theme-color" content="#fff" />
 </svelte:head>
 
 {@render children()}
