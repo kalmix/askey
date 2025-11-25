@@ -71,9 +71,9 @@ The dev server hot-reloads when you edit files inside `src/`. Use `npm run check
 
 - [x] "Universal" export file for ASCII animations.
 - [x] Offline support with service workers.
-- [ ] C# terminal player for `json.gz` files. (see: [askey-cli](#askey-cli))
+- [x] C# terminal player for `.askey` files. (see: [askey-cli](#askey-cli))
 - [ ] Implement dithering algorithms options.
-- [ ] Fix render bug in certain animations with certain backgrounds/complex color combinations.
+- [x] Fix render bug in certain animations with certain backgrounds/complex color combinations.
 - [ ] Increased test coverage.
 - [ ] Animated WebP support.
 - [ ] Video support maybe?
