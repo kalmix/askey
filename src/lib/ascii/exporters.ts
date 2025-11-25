@@ -1,9 +1,8 @@
-import * as gifenc from 'gifenc';
-import type { GIFFrameOptions } from 'gifenc';
-import UPNG from 'upng-js';
-const { GIFEncoder, applyPalette, quantize } = gifenc;
 import { buildSvgContent } from './render';
+import { renderToCanvas, renderToImageData } from './canvas-renderer';
 import type { ConvertedAsciiFrame } from './converter';
+import { getWorkerManager } from './worker-manager';
+import type { WasmError } from './error-types';
 
 interface ExportOptions {
 	outputElementId?: string;
@@ -14,6 +13,7 @@ interface ExportOptions {
 
 interface DownloadPngOptions extends ExportOptions {
 	scale?: number;
+	useCanvasRenderer?: boolean;
 }
 
 type DownloadWebpOptions = DownloadPngOptions;
@@ -22,11 +22,19 @@ interface DownloadGifOptions extends ExportOptions {
 	scale?: number;
 	repeat?: number;
 	colors?: number;
+	useCanvasRenderer?: boolean;
+	onProgress?: (progress: number) => void;
+	onError?: (error: WasmError) => void;
+	signal?: AbortSignal;
 }
 
 interface DownloadApngOptions extends ExportOptions {
 	scale?: number;
 	colors?: number;
+	useCanvasRenderer?: boolean;
+	onProgress?: (progress: number) => void;
+	onError?: (error: WasmError) => void;
+	signal?: AbortSignal;
 }
 
 function sanitizeFilename(filename: string): string {
@@ -47,6 +55,7 @@ function getBaseFilename(filename: string): string {
 	return filename.replace(/\.[^/.]+$/, '');
 }
 
+// * Note: For Animations, this will export just the first frame.
 export async function copyAsciiToClipboard(elementId = 'ascii-output'): Promise<void> {
 	if (typeof navigator === 'undefined' || !navigator.clipboard) return;
 	const element = document.getElementById(elementId);
@@ -55,6 +64,7 @@ export async function copyAsciiToClipboard(elementId = 'ascii-output'): Promise<
 	await navigator.clipboard.writeText(text);
 }
 
+// * Note: For Animations, this will export just the first frame.
 export function downloadAsciiText(asciiOutput: string, sourceFilename?: string): void {
 	if (!asciiOutput) return;
 	const text = asciiOutput.replace(/<[^>]+>/g, '');
@@ -97,6 +107,49 @@ export function downloadPng(
 	theme: string,
 	options: DownloadPngOptions = {}
 ): void {
+	// Try canvas renderer first if enabled
+	if (options.useCanvasRenderer) {
+		try {
+			const rendered = renderToCanvas(asciiOutput, {
+				transparentBackground: options.transparentBackground,
+				backgroundColor: options.backgroundColor
+			});
+
+			if (rendered) {
+				const scale = options.scale ?? 2;
+				const scaledCanvas = document.createElement('canvas');
+				scaledCanvas.width = Math.ceil(rendered.width * scale);
+				scaledCanvas.height = Math.ceil(rendered.height * scale);
+
+				const ctx = scaledCanvas.getContext('2d', { willReadFrequently: true });
+				if (ctx) {
+					ctx.imageSmoothingEnabled = false;
+					ctx.scale(scale, scale);
+					ctx.drawImage(rendered.canvas as HTMLCanvasElement, 0, 0);
+
+					const baseName = options.filename
+						? `${sanitizeFilename(getBaseFilename(options.filename))}-ascii`
+						: 'ascii-art';
+
+					scaledCanvas.toBlob((blob) => {
+						if (!blob) return;
+						const url = URL.createObjectURL(blob);
+						const a = document.createElement('a');
+						a.href = url;
+						a.download = `${baseName}.png`;
+						a.click();
+						URL.revokeObjectURL(url);
+					}, 'image/png');
+
+					return; // Success, exit early
+				}
+			}
+		} catch (error) {
+			console.warn('Canvas renderer failed, falling back to SVG method:', error);
+		}
+	}
+
+	// Fallback to SVG method
 	const svgData = buildSvgContent({
 		asciiOutput,
 		theme,
@@ -117,7 +170,7 @@ export function downloadPng(
 		canvas.width = Math.ceil(svgData.width * scale);
 		canvas.height = Math.ceil(svgData.height * scale);
 
-		const ctx = canvas.getContext('2d');
+		const ctx = canvas.getContext('2d', { willReadFrequently: true });
 		if (!ctx) {
 			URL.revokeObjectURL(url);
 			return;
@@ -156,6 +209,53 @@ export function downloadWebp(
 	theme: string,
 	options: DownloadWebpOptions = {}
 ): void {
+	// Try canvas renderer first
+	if (options.useCanvasRenderer) {
+		try {
+			const rendered = renderToCanvas(asciiOutput, {
+				transparentBackground: options.transparentBackground,
+				backgroundColor: options.backgroundColor
+			});
+
+			if (rendered) {
+				const scale = options.scale ?? 2;
+				const scaledCanvas = document.createElement('canvas');
+				scaledCanvas.width = Math.ceil(rendered.width * scale);
+				scaledCanvas.height = Math.ceil(rendered.height * scale);
+
+				const ctx = scaledCanvas.getContext('2d', { willReadFrequently: true });
+				if (ctx) {
+					ctx.imageSmoothingEnabled = false;
+					ctx.scale(scale, scale);
+					ctx.drawImage(rendered.canvas as HTMLCanvasElement, 0, 0);
+
+					const baseName = options.filename
+						? `${sanitizeFilename(getBaseFilename(options.filename))}-ascii`
+						: 'ascii-art';
+
+					scaledCanvas.toBlob(
+						(blob) => {
+							if (!blob) return;
+							const url = URL.createObjectURL(blob);
+							const a = document.createElement('a');
+							a.href = url;
+							a.download = `${baseName}.webp`;
+							a.click();
+							URL.revokeObjectURL(url);
+						},
+						'image/webp',
+						0.95
+					);
+
+					return; // Success, exit early
+				}
+			}
+		} catch (error) {
+			console.warn('Canvas renderer failed, falling back to SVG method:', error);
+		}
+	}
+
+	// If canvas renderer fails, fallback to SVG method
 	const svgData = buildSvgContent({
 		asciiOutput,
 		theme,
@@ -176,7 +276,7 @@ export function downloadWebp(
 		canvas.width = Math.ceil(svgData.width * scale);
 		canvas.height = Math.ceil(svgData.height * scale);
 
-		const ctx = canvas.getContext('2d');
+		const ctx = canvas.getContext('2d', { willReadFrequently: true });
 		if (!ctx) {
 			URL.revokeObjectURL(url);
 			return;
@@ -229,136 +329,176 @@ export async function downloadGif(
 		? `${sanitizeFilename(getBaseFilename(options.filename))}-ascii`
 		: 'ascii-animation';
 	const scale = Math.max(0.5, options.scale ?? 1);
-	const repeat = Number.isFinite(options.repeat ?? 0)
-		? Math.max(-1, Math.floor(options.repeat ?? 0))
-		: 0;
-	const colorBudget = Math.min(Math.max(options.colors ?? 128, 2), 256);
+	// const repeat = Number.isFinite(options.repeat ?? 0)
+	// 	? Math.max(-1, Math.floor(options.repeat ?? 0))
+	// 	: 0;
+	// const colorBudget = Math.min(Math.max(options.colors ?? 128, 2), 256);
 	const useTransparentBackground = Boolean(options.transparentBackground);
 
-	// First create APNG with high quality
-	const canvas = document.createElement('canvas');
+	// Rasterize all frames to RGBA
+	console.log(`[Main] Starting rasterization of ${effectiveFrames.length} frames...`);
+
+	// init the progress
+	options.onProgress?.(0);
+
+	const rasterStartTime = performance.now();
 	const rgbaFrames: ArrayBuffer[] = [];
 	const delays: number[] = [];
-	const rasterPromises: Promise<{
-		imageData: ImageData;
-		width: number;
-		height: number;
-		hasTransparency: boolean;
-	} | null>[] = [];
 
 	let width = 0;
 	let height = 0;
 
-	// Rasterize all frames to RGBA
-	for (const frame of effectiveFrames) {
-		const svgData = buildSvgContent({
-			asciiOutput: frame.ascii,
-			theme,
-			outputElementId: options.outputElementId,
-			transparentBackground: useTransparentBackground,
-			backgroundColor: options.backgroundColor
-		});
+	// Use canvas renderer for much faster rasterization
+	const fontSize = 10;
+	const fontFamily = "'Inconsolata', monospace";
 
-		if (!svgData) {
-			rasterPromises.push(Promise.resolve(null));
-			continue;
-		}
-
-		const rasterPromise = rasterizeSvg(
-			svgData.svg,
-			svgData.width,
-			svgData.height,
-			canvas,
-			scale
-		).catch((error) => {
-			console.warn('Unable to rasterize frame for GIF export', error);
-			return null;
-		});
-
-		rasterPromises.push(rasterPromise);
+	let reusableCanvas: OffscreenCanvas | HTMLCanvasElement;
+	if (typeof OffscreenCanvas !== 'undefined') {
+		reusableCanvas = new OffscreenCanvas(100, 100);
+	} else {
+		reusableCanvas = document.createElement('canvas');
 	}
 
-	const rasterResults = await Promise.all(rasterPromises);
+	for (let i = 0; i < effectiveFrames.length; i++) {
+		const frame = effectiveFrames[i];
 
-	// Build RGBA frames array
-	for (let i = 0; i < rasterResults.length; i++) {
-		const raster = rasterResults[i];
-		if (!raster) continue;
+		// Render directly to canvas/ImageData
+		const rendered = renderToImageData(frame.ascii, {
+			fontSize,
+			fontFamily,
+			backgroundColor: options.backgroundColor,
+			transparentBackground: useTransparentBackground,
+			reuseCanvas: reusableCanvas
+		});
+
+		if (!rendered) continue;
 
 		if (!width || !height) {
-			width = raster.width;
-			height = raster.height;
+			width = rendered.width;
+			height = rendered.height;
 		}
 
-		const frameDelay = Math.max(20, effectiveFrames[i].delay || 0);
-		delays.push(frameDelay);
-		rgbaFrames.push(raster.imageData.data.buffer.slice(0));
-	}
+		let finalImageData = rendered;
+		if (scale !== 1) {
+			// Simple scaling via temporary canvas
+			const scaledWidth = Math.ceil(width * scale);
+			const scaledHeight = Math.ceil(height * scale);
+			const scaledCanvas =
+				typeof OffscreenCanvas !== 'undefined'
+					? new OffscreenCanvas(scaledWidth, scaledHeight)
+					: document.createElement('canvas');
 
-	if (!rgbaFrames.length || !width || !height) return;
+			scaledCanvas.width = scaledWidth;
+			scaledCanvas.height = scaledHeight;
 
-	// Now convert RGBA frames to GIF with palette quantization
-	const encoder = GIFEncoder();
-	let wroteFrame = false;
+			const ctx = scaledCanvas.getContext('2d', { willReadFrequently: true }) as
+				| CanvasRenderingContext2D
+				| OffscreenCanvasRenderingContext2D;
+			if (ctx) {
+				ctx.imageSmoothingEnabled = false;
 
-	for (let i = 0; i < rgbaFrames.length; i++) {
-		const rgbaBuffer = new Uint8ClampedArray(rgbaFrames[i]);
-		const frameDelay = delays[i];
+				// Draw original data to temp canvas
+				const tempCanvas =
+					typeof OffscreenCanvas !== 'undefined'
+						? new OffscreenCanvas(width, height)
+						: document.createElement('canvas');
+				tempCanvas.width = width;
+				tempCanvas.height = height;
+				const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true }) as
+					| CanvasRenderingContext2D
+					| OffscreenCanvasRenderingContext2D;
+				tempCtx.putImageData(rendered, 0, 0);
 
-		const palette = quantize(rgbaBuffer, colorBudget, {
-			format: 'rgba4444',
-			clearAlpha: true,
-			clearAlphaThreshold: 0
-		});
+				// Draw scaled
+				ctx.scale(scale, scale);
+				ctx.drawImage(tempCanvas as HTMLCanvasElement, 0, 0);
 
-		let transparentIndex = -1;
-		const frameHasAlpha = useTransparentBackground && hasTransparentPixels(rgbaBuffer);
+				finalImageData = ctx.getImageData(0, 0, scaledWidth, scaledHeight);
 
-		if (frameHasAlpha) {
-			transparentIndex = palette.findIndex((color) => color.length >= 4 && color[3] === 0);
-			if (transparentIndex === -1) {
-				if (palette.length >= 256) {
-					palette[palette.length - 1] = [0, 0, 0, 0];
-					transparentIndex = palette.length - 1;
-				} else {
-					palette.push([0, 0, 0, 0]);
-					transparentIndex = palette.length - 1;
+				// Update width/height to scaled values
+				if (width !== scaledWidth) {
+					width = scaledWidth;
+					height = scaledHeight;
 				}
 			}
 		}
 
-		const indexedPixels = applyPalette(rgbaBuffer, palette, 'rgba4444');
-		const frameOptions: GIFFrameOptions = {
-			palette,
-			delay: frameDelay,
-			dispose: 2
-		};
+		const frameDelay = Math.max(20, frame.delay || 0);
+		delays.push(frameDelay);
+		rgbaFrames.push(finalImageData.data.buffer.slice(0));
 
-		if (!wroteFrame) {
-			frameOptions.repeat = repeat;
+		// Report rasterization progress (0-50%)
+		if (i % 3 === 0 || i === effectiveFrames.length - 1) {
+			const rasterProgress = ((i + 1) / effectiveFrames.length) * 50;
+			options.onProgress?.(rasterProgress);
 		}
-
-		if (frameHasAlpha && transparentIndex >= 0) {
-			frameOptions.transparent = true;
-			frameOptions.transparentIndex = transparentIndex;
+		if (rgbaFrames.length % 5 === 0) {
+			await new Promise((resolve) => setTimeout(resolve, 0));
 		}
-
-		encoder.writeFrame(indexedPixels, width, height, frameOptions);
-		wroteFrame = true;
 	}
 
-	if (!wroteFrame) return;
+	const rasterDuration = performance.now() - rasterStartTime;
+	console.log(`[Main] Rasterization complete in ${rasterDuration.toFixed(2)}ms`);
 
-	encoder.finish();
-	const bytes = encoder.bytes();
-	const safeBytes = new Uint8Array(bytes);
-	const blob = new Blob([safeBytes], { type: 'image/gif' });
-	const url = URL.createObjectURL(blob);
-	const a = document.createElement('a');
-	a.href = url;
-	a.download = `${baseName}.gif`;
-	a.click();
-	URL.revokeObjectURL(url);
+	if (!rgbaFrames.length || !width || !height) return;
+
+	// Use worker for encoding
+	try {
+		const workerManager = getWorkerManager();
+		const loopCount = options.repeat === undefined ? -1 : options.repeat;
+		options.onProgress?.(50);
+		const estimatedEncodingMs = effectiveFrames.length * 100 + (width * height) / 100;
+		const progressInterval = Math.max(100, estimatedEncodingMs / 45);
+
+		let currentProgress = 50;
+		const progressTimer = setInterval(() => {
+			if (currentProgress < 95) {
+				currentProgress = Math.min(95, currentProgress + 1);
+				options.onProgress?.(currentProgress);
+			}
+		}, progressInterval);
+
+		try {
+			const blob = await workerManager.exportGif(
+				{
+					frames: rgbaFrames,
+					delays,
+					width,
+					height,
+					repeat: loopCount,
+					quality: 70, // !TODO: Add quality slider, atm this is the most balanced value
+					transparent: useTransparentBackground
+				},
+				{
+					onProgress: (progress) => {
+						// Only clear timer and report when encoding is actually complete
+						if (progress >= 95) {
+							clearInterval(progressTimer);
+							options.onProgress?.(progress);
+						}
+					},
+					onError: options.onError,
+					signal: options.signal
+				}
+			);
+
+			clearInterval(progressTimer);
+			options.onProgress?.(100);
+
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = `${baseName}.gif`;
+			a.click();
+			URL.revokeObjectURL(url);
+		} catch (error) {
+			clearInterval(progressTimer);
+			throw error;
+		}
+	} catch (error) {
+		console.error('Failed to export GIF via worker:', error);
+		throw error; // Re-throw to propagate to UI
+	}
 }
 
 export async function downloadApng(
@@ -376,9 +516,8 @@ export async function downloadApng(
 		? `${sanitizeFilename(getBaseFilename(options.filename))}-ascii`
 		: 'ascii-animation';
 	const scale = Math.max(0.5, options.scale ?? 1);
-	const rawColors = options.colors;
-	const colorCount =
-		rawColors === undefined ? 0 : Math.min(Math.max(Math.floor(rawColors), 0), 256);
+	// const rawColors = options.colors;
+	// const colorCount = rawColors === undefined ? 0 : Math.min(Math.max(Math.floor(rawColors), 0), 256);
 	const useTransparentBackground = Boolean(options.transparentBackground);
 
 	const canvas = document.createElement('canvas');
@@ -414,21 +553,37 @@ export async function downloadApng(
 
 	if (!rgbaFrames.length || !width || !height) return;
 
-	const encoded = UPNG.encode(
-		rgbaFrames,
-		width,
-		height,
-		colorCount,
-		rgbaFrames.length > 1 ? delays : undefined
-	);
-	const apngBytes = new Uint8Array(encoded);
-	const blob = new Blob([apngBytes], { type: 'image/apng' });
-	const url = URL.createObjectURL(blob);
-	const a = document.createElement('a');
-	a.href = url;
-	a.download = `${baseName}.png`;
-	a.click();
-	URL.revokeObjectURL(url);
+	// Use worker for encoding
+	try {
+		const workerManager = getWorkerManager();
+		const blob = await workerManager.exportApng(
+			{
+				frames: rgbaFrames,
+				delays,
+				width,
+				height,
+				repeat: 0, // Infinite loop by default
+				quality: options.colors ?? 128 // Use colors option as quality, default 128 for good balance
+			},
+			{
+				onProgress: (progress) => {
+					options.onProgress?.(progress);
+				},
+				onError: options.onError,
+				signal: options.signal
+			}
+		);
+
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = `${baseName}.png`;
+		a.click();
+		URL.revokeObjectURL(url);
+	} catch (error) {
+		console.error('Failed to export APNG via worker:', error);
+		throw error; // Re-throw to propagate to UI
+	}
 }
 
 async function rasterizeSvg(
@@ -437,7 +592,7 @@ async function rasterizeSvg(
 	logicalHeight: number,
 	canvas: HTMLCanvasElement,
 	scale: number
-): Promise<{ imageData: ImageData; width: number; height: number; hasTransparency: boolean }> {
+): Promise<{ imageData: ImageData; width: number; height: number }> {
 	const targetWidth = Math.max(1, Math.ceil(logicalWidth * scale));
 	const targetHeight = Math.max(1, Math.ceil(logicalHeight * scale));
 
@@ -450,7 +605,7 @@ async function rasterizeSvg(
 			try {
 				canvas.width = targetWidth;
 				canvas.height = targetHeight;
-				const ctx = canvas.getContext('2d');
+				const ctx = canvas.getContext('2d', { willReadFrequently: true });
 				if (!ctx) {
 					reject(new Error('Failed to acquire 2D context for GIF export'));
 					return;
@@ -459,14 +614,13 @@ async function rasterizeSvg(
 				ctx.clearRect(0, 0, targetWidth, targetHeight);
 				ctx.imageSmoothingEnabled = false;
 				ctx.setTransform(scale, 0, 0, scale, 0, 0);
-				ctx.drawImage(img, 0, 0, logicalWidth, logicalHeight);
+				ctx.drawImage(img, 0, 0);
 				ctx.setTransform(1, 0, 0, 1, 0, 0);
 				const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
 				resolve({
 					imageData,
 					width: targetWidth,
-					height: targetHeight,
-					hasTransparency: hasTransparentPixels(imageData.data)
+					height: targetHeight
 				});
 			} catch (error) {
 				reject(error);
@@ -488,59 +642,6 @@ async function rasterizeSvg(
 	});
 }
 
-function hasTransparentPixels(data: Uint8ClampedArray): boolean {
-	for (let index = 3; index < data.length; index += 4) {
-		if (data[index] < 255) {
-			return true;
-		}
-	}
-	return false;
-}
-
-/**
- * pseudo-compress ASCII content by shortening color codes and using a palette
- */
-function optimizeAsciiContent(ascii: string): string {
-	let optimized = ascii;
-
-	optimized = optimized.replace(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/g, (match, r, g, b) => {
-		const toHex = (n: string) => parseInt(n).toString(16).padStart(2, '0');
-		return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
-	});
-
-	const colorMap = new Map<string, string>();
-	const colorLetters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-	let colorIndex = 0;
-
-	const colorRegex = /#[0-9a-f]{6}/gi;
-	const colors = optimized.match(colorRegex) || [];
-	const uniqueColors = [...new Set(colors.map((c) => c.toLowerCase()))];
-
-	uniqueColors.forEach((color) => {
-		if (colorIndex < colorLetters.length) {
-			colorMap.set(color, colorLetters[colorIndex++]);
-		}
-	});
-
-	optimized = optimized.replace(
-		/<span style="color: (#[0-9a-f]{6})">(.?)<\/span>/gi,
-		(match, color, char) => {
-			const shortColor = colorMap.get(color.toLowerCase()) || color;
-			return `<s c="${shortColor}">${char}</s>`;
-		}
-	);
-
-	// save palette at the start of the content
-	if (colorMap.size > 0) {
-		const palette = Array.from(colorMap.entries())
-			.map(([color, letter]) => `${letter}:${color}`)
-			.join(',');
-		optimized = `<!--P:${palette}-->${optimized}`;
-	}
-
-	return optimized;
-}
-
 function getCommonDelay(frames: ConvertedAsciiFrame[]): number | null {
 	if (frames.length === 0) return null;
 	const firstDelay = frames[0].delay;
@@ -552,44 +653,110 @@ function getCommonDelay(frames: ConvertedAsciiFrame[]): number | null {
  * Export animated ASCII art as a JSON file that can be played back on other websites/terminal
  * I kinda copied lootie...
  */
+/**
+ * Export animated ASCII art as a JSON file that can be played back on other websites/terminal
+ * Optimized with global palette and .askey extension
+ */
 export async function downloadAnimationJson(
 	frames: ConvertedAsciiFrame[],
-	filename = 'ascii-animation.json'
+	filename = 'ascii-animation.askey'
 ): Promise<void> {
 	if (!frames || frames.length === 0) return;
 
 	const totalDuration = frames.reduce((sum, frame) => sum + frame.delay, 0);
 	const commonDelay = getCommonDelay(frames);
 
-	const sanitizedBase = sanitizeFilename(getBaseFilename(filename));
+	// Ensure extension is .askey
+	let finalFilename = filename;
+	if (!finalFilename.endsWith('.askey')) {
+		finalFilename = getBaseFilename(finalFilename) + '.askey';
+	}
+	const sanitizedBase = sanitizeFilename(getBaseFilename(finalFilename));
+
+	// 1. Pre-process: Collect all colors and normalize content
+	const colorCounts = new Map<string, number>();
+	const rgbRegex = /rgb\((\d+),\s*(\d+),\s*(\d+)\)/g;
+	const colorRegex = /#[0-9a-f]{6}/gi;
+
+	const processedFrames = frames.map((frame) => {
+		let content = frame.ascii;
+		// Normalize RGB to Hex
+		content = content.replace(rgbRegex, (match, r, g, b) => {
+			const toHex = (n: string) => parseInt(n).toString(16).padStart(2, '0');
+			return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+		});
+
+		// Count colors
+		const matches = content.match(colorRegex) || [];
+		matches.forEach((c) => {
+			const color = c.toLowerCase();
+			colorCounts.set(color, (colorCounts.get(color) || 0) + 1);
+		});
+
+		return { ...frame, ascii: content };
+	});
+
+	// 2. Build Global Palette
+	// Sort by frequency to give single-char keys to most common colors
+	const sortedColors = [...colorCounts.entries()].sort((a, b) => b[1] - a[1]).map((e) => e[0]);
+	const colorPalette: Record<string, string> = {};
+	const colorMap = new Map<string, string>();
+	const colorLetters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+
+	sortedColors.forEach((color, index) => {
+		if (index < colorLetters.length) {
+			const key = colorLetters[index];
+			colorPalette[key] = color;
+			colorMap.set(color, key);
+		}
+	});
+
+	// 3. Optimize Frames using Global Palette
+	const optimizedFrames = processedFrames.map((frame) => {
+		let content = frame.ascii;
+		content = content.replace(
+			/<span style="color: (#[0-9a-f]{6})">(.?)<\/span>/gi,
+			(match, color, char) => {
+				const lowerColor = color.toLowerCase();
+				const key = colorMap.get(lowerColor);
+				// Use short key if available, otherwise full color
+				return `<s c="${key || color}">${char}</s>`;
+			}
+		);
+		return {
+			c: content,
+			d: frame.delay
+		};
+	});
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const animationData: Record<string, any> = {
-		v: '1.0.0',
+		v: '2.0.0', // Bump version for new format
 		n: sanitizedBase,
 		m: {
 			f: frames.length,
 			d: totalDuration,
 			t: new Date().toISOString()
-		}
+		},
+		p: colorPalette, // Global palette
+		fr: optimizedFrames
 	};
 
-	// If all delays are the same, store once instead of per-frame
+	// Optimization: If all delays are the same, we could theoretically store it in root,
+	// but our new format expects {c, d} in frames.
+	// To save space, if commonDelay exists, we could omit 'd' in frames and put it in 'm' or root,
+	// but let's stick to a consistent frame structure for now or use the previous logic if preferred.
+	// The previous logic had separate branches. Let's support the 'common delay' optimization.
 	if (commonDelay !== null) {
 		animationData.d = commonDelay;
-		animationData.fr = frames.map((frame) => optimizeAsciiContent(frame.ascii));
-	} else {
-		animationData.fr = frames.map((frame) => ({
-			c: optimizeAsciiContent(frame.ascii),
-			d: frame.delay
-		}));
+		animationData.fr = optimizedFrames.map((f) => f.c); // Just strings if delay is common
 	}
 
 	const jsonString = JSON.stringify(animationData);
 
 	// gzip compression *if supported
 	let blob: Blob;
-	let downloadFilename = `${sanitizedBase}.json`;
+	const downloadFilename = finalFilename;
 
 	if (typeof CompressionStream !== 'undefined') {
 		try {
@@ -599,7 +766,10 @@ export async function downloadAnimationJson(
 			const compressedBlob = await new Response(compressedStream).blob();
 
 			blob = compressedBlob;
-			downloadFilename = `${sanitizedBase}.json.gz`;
+			// Usually .json.gz, but user wants .askey.
+			// We can keep .askey and just know it's gzipped JSON.
+			// Or maybe .askey.gz? The request said "make them be .askey files".
+			// I'll assume .askey implies the compressed format.
 		} catch (error) {
 			console.warn('Compression failed, using uncompressed', error);
 			blob = new Blob([jsonString], { type: 'application/json' });

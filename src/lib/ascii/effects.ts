@@ -16,65 +16,106 @@ export interface FilterOptions {
 }
 
 export function applyImageFilters(imageData: ImageData, options: FilterOptions): ImageData {
-	const { brightness, contrast, saturation, hue, grayscale, sepia, invertColors, thresholding, sharpness, edgeDetection } = options;
+	const {
+		brightness,
+		contrast,
+		saturation,
+		hue,
+		grayscale,
+		sepia,
+		invertColors,
+		thresholding,
+		sharpness,
+		edgeDetection
+	} = options;
 	const data = imageData.data;
 
+	// Pre-calculate filter factors to avoid repeated division
+	const applyBrightness = brightness !== 100;
+	const brightnessFactor = brightness / 100;
+
+	const applyContrast = contrast !== 100;
+	const contrastFactor = contrast / 100;
+
+	const applySaturation = saturation !== 100;
+	const saturationFactor = saturation / 100;
+
+	const applyHue = hue !== 0;
+	const hueShift = hue / 360;
+
+	const applyGrayscale = grayscale > 0;
+	const grayscaleFactor = grayscale / 100;
+	const grayFactorInv = 1 - grayscaleFactor;
+
+	const applySepia = sepia > 0;
+	const sepiaFactor = sepia / 100;
+	const sepiaFactorInv = 1 - sepiaFactor;
+
+	const applyInvert = invertColors > 0;
+	const invertFactor = invertColors / 100;
+	const invertFactorInv = 1 - invertFactor;
+
+	// Grayscale weights see: https://en.wikipedia.org/wiki/Grayscale#Luma_(luminance)
+	const grayR = 0.299;
+	const grayG = 0.587;
+	const grayB = 0.114;
+
+	// Loop through each pixel
 	for (let i = 0; i < data.length; i += 4) {
+		// Get the RGB values
 		let r = data[i];
 		let g = data[i + 1];
 		let b = data[i + 2];
 
-		if (brightness !== 100) {
-			const factor = brightness / 100;
-			r *= factor;
-			g *= factor;
-			b *= factor;
+		// Apply brightness
+		if (applyBrightness) {
+			r *= brightnessFactor;
+			g *= brightnessFactor;
+			b *= brightnessFactor;
 		}
 
-		if (contrast !== 100) {
-			const factor = contrast / 100;
-			r = ((r / 255 - 0.5) * factor + 0.5) * 255;
-			g = ((g / 255 - 0.5) * factor + 0.5) * 255;
-			b = ((b / 255 - 0.5) * factor + 0.5) * 255;
+		if (applyContrast) {
+			r = ((r / 255 - 0.5) * contrastFactor + 0.5) * 255;
+			g = ((g / 255 - 0.5) * contrastFactor + 0.5) * 255;
+			b = ((b / 255 - 0.5) * contrastFactor + 0.5) * 255;
 		}
 
-		const [h, s, l] = rgbToHsl(r, g, b);
-		let newH = h;
-		let newS = s;
+		if (applySaturation || applyHue) {
+			const [h, s, l] = rgbToHsl(r, g, b);
+			let newH = h;
+			let newS = s;
 
-		if (saturation !== 100) {
-			newS = s * (saturation / 100);
+			if (applySaturation) {
+				newS = s * saturationFactor;
+			}
+
+			if (applyHue) {
+				newH = (h + hueShift) % 1;
+			}
+
+			[r, g, b] = hslToRgb(newH, newS, l);
 		}
 
-		if (hue !== 0) {
-			newH = (h + hue / 360) % 1;
+		if (applyGrayscale) {
+			const gray = grayR * r + grayG * g + grayB * b;
+			r = r * grayFactorInv + gray * grayscaleFactor;
+			g = g * grayFactorInv + gray * grayscaleFactor;
+			b = b * grayFactorInv + gray * grayscaleFactor;
 		}
 
-		[r, g, b] = hslToRgb(newH, newS, l);
-
-		if (grayscale > 0) {
-			const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-			const grayFactor = grayscale / 100;
-			r = r * (1 - grayFactor) + gray * grayFactor;
-			g = g * (1 - grayFactor) + gray * grayFactor;
-			b = b * (1 - grayFactor) + gray * grayFactor;
-		}
-
-		if (sepia > 0) {
-			const sepiaFactor = sepia / 100;
+		if (applySepia) {
 			const tr = 0.393 * r + 0.769 * g + 0.189 * b;
 			const tg = 0.349 * r + 0.686 * g + 0.168 * b;
 			const tb = 0.272 * r + 0.534 * g + 0.131 * b;
-			r = r * (1 - sepiaFactor) + tr * sepiaFactor;
-			g = g * (1 - sepiaFactor) + tg * sepiaFactor;
-			b = b * (1 - sepiaFactor) + tb * sepiaFactor;
+			r = r * sepiaFactorInv + tr * sepiaFactor;
+			g = g * sepiaFactorInv + tg * sepiaFactor;
+			b = b * sepiaFactorInv + tb * sepiaFactor;
 		}
 
-		if (invertColors > 0) {
-			const invertFactor = invertColors / 100;
-			r = r * (1 - invertFactor) + (255 - r) * invertFactor;
-			g = g * (1 - invertFactor) + (255 - g) * invertFactor;
-			b = b * (1 - invertFactor) + (255 - b) * invertFactor;
+		if (applyInvert) {
+			r = r * invertFactorInv + (255 - r) * invertFactor;
+			g = g * invertFactorInv + (255 - g) * invertFactor;
+			b = b * invertFactorInv + (255 - b) * invertFactor;
 		}
 
 		data[i] = clampColor(r);
@@ -99,6 +140,7 @@ export function applyImageFilters(imageData: ImageData, options: FilterOptions):
 	return processed;
 }
 
+// !TODO: Implement dithering methods
 export function applyDithering(imageData: ImageData, method: DitheringName): ImageData {
 	if (method === 'None') {
 		return imageData;
@@ -116,23 +158,36 @@ export function applyDithering(imageData: ImageData, method: DitheringName): Ima
 	}
 }
 
+// Applies a simple sharpening filter to an image using a 3x3 kernel.
 function applySharpness(imageData: ImageData, amount: number): ImageData {
 	const data = imageData.data;
 	const { width, height } = imageData;
 	const newData = new Uint8ClampedArray(data);
 	const factor = amount / 10;
+	const centerWeight = 1 + 4 * factor;
 
+	// Iterate over each pixel
 	for (let y = 1; y < height - 1; y++) {
-		for (let x = 1; x < width - 1; x++) {
-			const idx = (y * width + x) * 4;
+		const yOffset = y * width;
+		const yTopOffset = (y - 1) * width;
+		const yBottomOffset = (y + 1) * width;
 
+		// Iterate over each pixel in the row
+		for (let x = 1; x < width - 1; x++) {
+			const idx = (yOffset + x) * 4;
+			const idxTop = (yTopOffset + x) * 4;
+			const idxBottom = (yBottomOffset + x) * 4;
+			const idxLeft = (yOffset + (x - 1)) * 4;
+			const idxRight = (yOffset + (x + 1)) * 4;
+
+			// Iterate over each color channel
 			for (let c = 0; c < 3; c++) {
 				const center = data[idx + c];
-				const top = data[((y - 1) * width + x) * 4 + c];
-				const bottom = data[((y + 1) * width + x) * 4 + c];
-				const left = data[(y * width + (x - 1)) * 4 + c];
-				const right = data[(y * width + (x + 1)) * 4 + c];
-				const sharpened = center * (1 + 4 * factor) - (top + bottom + left + right) * factor;
+				const top = data[idxTop + c];
+				const bottom = data[idxBottom + c];
+				const left = data[idxLeft + c];
+				const right = data[idxRight + c];
+				const sharpened = center * centerWeight - (top + bottom + left + right) * factor;
 				newData[idx + c] = clampColor(sharpened);
 			}
 		}
@@ -145,31 +200,47 @@ function applySharpness(imageData: ImageData, amount: number): ImageData {
 function applyEdgeDetection(imageData: ImageData, strength: number): ImageData {
 	const data = imageData.data;
 	const { width, height } = imageData;
-	const newData = new Uint8ClampedArray(data); 
+	const newData = new Uint8ClampedArray(data);
+	const factor = (strength - 1) / 10;
 
 	for (let y = 1; y < height - 1; y++) {
+		const yOffset = y * width;
+		const yTopOffset = (y - 1) * width;
+		const yBottomOffset = (y + 1) * width;
+
 		for (let x = 1; x < width - 1; x++) {
-			const idx = (y * width + x) * 4;
+			const idx = (yOffset + x) * 4;
+
+			// Pre-calculate all 8 neighbor indices
+			const idxTL = (yTopOffset + (x - 1)) * 4;
+			const idxT = (yTopOffset + x) * 4;
+			const idxTR = (yTopOffset + (x + 1)) * 4;
+			const idxL = (yOffset + (x - 1)) * 4;
+			const idxR = (yOffset + (x + 1)) * 4;
+			const idxBL = (yBottomOffset + (x - 1)) * 4;
+			const idxB = (yBottomOffset + x) * 4;
+			const idxBR = (yBottomOffset + (x + 1)) * 4;
 
 			for (let c = 0; c < 3; c++) {
+				// Sobel X gradient
 				const gx =
-					-1 * data[((y - 1) * width + (x - 1)) * 4 + c] +
-					1 * data[((y - 1) * width + (x + 1)) * 4 + c] +
-					-2 * data[(y * width + (x - 1)) * 4 + c] +
-					2 * data[(y * width + (x + 1)) * 4 + c] +
-					-1 * data[((y + 1) * width + (x - 1)) * 4 + c] +
-					1 * data[((y + 1) * width + (x + 1)) * 4 + c];
+					-1 * data[idxTL + c] +
+					1 * data[idxTR + c] +
+					-2 * data[idxL + c] +
+					2 * data[idxR + c] +
+					-1 * data[idxBL + c] +
+					1 * data[idxBR + c];
 
+				// Sobel Y gradient
 				const gy =
-					-1 * data[((y - 1) * width + (x - 1)) * 4 + c] +
-					-2 * data[((y - 1) * width + x) * 4 + c] +
-					-1 * data[((y - 1) * width + (x + 1)) * 4 + c] +
-					1 * data[((y + 1) * width + (x - 1)) * 4 + c] +
-					2 * data[((y + 1) * width + x) * 4 + c] +
-					1 * data[((y + 1) * width + (x + 1)) * 4 + c];
+					-1 * data[idxTL + c] +
+					-2 * data[idxT + c] +
+					-1 * data[idxTR + c] +
+					1 * data[idxBL + c] +
+					2 * data[idxB + c] +
+					1 * data[idxBR + c];
 
 				const magnitude = Math.sqrt(gx * gx + gy * gy);
-				const factor = (strength - 1) / 10;
 				newData[idx + c] = clampColor(data[idx + c] + magnitude * factor);
 			}
 		}
@@ -180,9 +251,15 @@ function applyEdgeDetection(imageData: ImageData, strength: number): ImageData {
 
 function applyThreshold(imageData: ImageData, threshold: number): ImageData {
 	const data = imageData.data;
+	const dataLength = data.length;
 
-	for (let i = 0; i < data.length; i += 4) {
-		const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+	// Use same perceptual luminance weights for consistency
+	const lumR = 0.299;
+	const lumG = 0.587;
+	const lumB = 0.114;
+
+	for (let i = 0; i < dataLength; i += 4) {
+		const gray = lumR * data[i] + lumG * data[i + 1] + lumB * data[i + 2];
 		const value = gray > threshold ? 255 : 0;
 		data[i] = data[i + 1] = data[i + 2] = value;
 	}
@@ -206,6 +283,5 @@ function orderedDithering(imageData: ImageData): ImageData {
 	// !TODO
 	return imageData;
 }
-
 
 const clampColor = (value: number) => Math.max(0, Math.min(255, value));

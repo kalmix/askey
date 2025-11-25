@@ -1,12 +1,29 @@
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
-
 	interface Props {
 		disabled?: boolean;
 		isAnimated?: boolean;
+		oncopy?: () => void;
+		ondownloadTxt?: () => void;
+		ondownloadSvg?: () => void;
+		ondownloadPng?: () => void;
+		ondownloadWebp?: () => void;
+		ondownloadGif?: () => void;
+		ondownloadApng?: () => void;
+		onexportAnimation?: () => void;
 	}
 
-	let { disabled = false, isAnimated = false }: Props = $props();
+	let {
+		disabled = false,
+		isAnimated = false,
+		oncopy,
+		ondownloadTxt,
+		ondownloadSvg,
+		ondownloadPng,
+		ondownloadWebp,
+		ondownloadGif,
+		ondownloadApng,
+		onexportAnimation
+	}: Props = $props();
 
 	type ActionEvent =
 		| 'copy'
@@ -18,17 +35,6 @@
 		| 'downloadApng'
 		| 'exportAnimation';
 
-	const dispatch = createEventDispatcher<{
-		copy: void;
-		downloadTxt: void;
-		downloadSvg: void;
-		downloadPng: void;
-		downloadWebp: void;
-		downloadGif: void;
-		downloadApng: void;
-		exportAnimation: void;
-	}>();
-
 	let copyFeedback = $state(false);
 
 	const emit = (eventName: ActionEvent) => () => {
@@ -37,10 +43,23 @@
 			setTimeout(() => {
 				copyFeedback = false;
 			}, 2000);
+			oncopy?.();
+		} else if (eventName === 'downloadTxt') {
+			ondownloadTxt?.();
+		} else if (eventName === 'downloadSvg') {
+			ondownloadSvg?.();
+		} else if (eventName === 'downloadPng') {
+			ondownloadPng?.();
+		} else if (eventName === 'downloadWebp') {
+			ondownloadWebp?.();
+		} else if (eventName === 'downloadGif') {
+			ondownloadGif?.();
+		} else if (eventName === 'downloadApng') {
+			ondownloadApng?.();
+		} else if (eventName === 'exportAnimation') {
+			onexportAnimation?.();
 		}
-		dispatch(eventName);
 	};
-
 </script>
 
 <div class="action-buttons" role="region" aria-label="Export and copy actions">
@@ -48,7 +67,7 @@
 		<button
 			type="button"
 			onclick={emit('copy')}
-			disabled={disabled}
+			{disabled}
 			class:copied={copyFeedback}
 			aria-live="polite"
 			aria-label={copyFeedback ? 'ASCII copied to clipboard' : 'Copy ASCII text to clipboard'}
@@ -56,14 +75,34 @@
 			{copyFeedback ? 'Copied!' : 'Copy Text'}
 		</button>
 	</div>
-	
+
 	<div class="button-group export-actions" role="group" aria-label="Static export formats">
 		<div class="group-label">Export Formats</div>
 		<div class="button-row">
-			<button type="button" onclick={emit('downloadTxt')} disabled={disabled} aria-label="Download ASCII as TXT">TXT</button>
-			<button type="button" onclick={emit('downloadSvg')} disabled={disabled} aria-label="Download ASCII as SVG">SVG</button>
-			<button type="button" onclick={emit('downloadPng')} disabled={disabled} aria-label="Download ASCII as PNG">PNG</button>
-			<button type="button" onclick={emit('downloadWebp')} disabled={disabled} aria-label="Download ASCII as WebP">WebP</button>
+			<button
+				type="button"
+				onclick={emit('downloadTxt')}
+				{disabled}
+				aria-label="Download ASCII as TXT">TXT</button
+			>
+			<button
+				type="button"
+				onclick={emit('downloadSvg')}
+				{disabled}
+				aria-label="Download ASCII as SVG">SVG</button
+			>
+			<button
+				type="button"
+				onclick={emit('downloadPng')}
+				{disabled}
+				aria-label="Download ASCII as PNG">PNG</button
+			>
+			<button
+				type="button"
+				onclick={emit('downloadWebp')}
+				{disabled}
+				aria-label="Download ASCII as WebP">WebP</button
+			>
 		</div>
 	</div>
 
@@ -71,16 +110,26 @@
 		<div class="button-group animation-actions" role="group" aria-label="Animation export formats">
 			<div class="group-label">Animation Formats</div>
 			<div class="button-row">
-				<button type="button" onclick={emit('downloadApng')} disabled={disabled} aria-label="Download ASCII animation as APNG">APNG</button>
-				<button type="button" onclick={emit('downloadGif')} disabled={disabled} aria-label="Download ASCII animation as GIF">GIF</button>
+				<button
+					type="button"
+					onclick={emit('downloadApng')}
+					{disabled}
+					aria-label="Download ASCII animation as APNG">APNG</button
+				>
+				<button
+					type="button"
+					onclick={emit('downloadGif')}
+					{disabled}
+					aria-label="Download ASCII animation as GIF">GIF</button
+				>
 				<button
 					type="button"
 					onclick={emit('exportAnimation')}
-					disabled={disabled}
+					{disabled}
 					class="export-json"
 					aria-label="Export animation data for askey player"
 				>
-					Export JSON (askey-player.js)
+					Export .askey (askey-player)
 				</button>
 			</div>
 		</div>
@@ -93,7 +142,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 1.25rem;
-		width: -webkit-fill-available; 
+		width: -webkit-fill-available;
 	}
 
 	.button-group {
@@ -113,8 +162,14 @@
 
 	.button-row {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+		grid-template-columns: 1fr 1fr;
 		gap: 0.5rem;
+	}
+
+	@media (min-width: 480px) {
+		.button-row {
+			grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+		}
 	}
 
 	.primary-actions {
@@ -124,6 +179,7 @@
 
 	.action-buttons button {
 		padding: 0.75rem 1rem;
+		min-height: 48px;
 		background: var(--gray-800);
 		border: 1px solid var(--gray-700);
 		color: var(--gray-50);
@@ -134,6 +190,7 @@
 		font-family: 'Inconsolata', monospace;
 		white-space: nowrap;
 		text-align: center;
+		-webkit-tap-highlight-color: transparent;
 	}
 
 	:global(body.light) .action-buttons button {
@@ -151,6 +208,28 @@
 	:global(body.light) .action-buttons button:hover:enabled {
 		background: var(--gray-900);
 		border-color: var(--gray-700);
+	}
+
+	@media (hover: none) {
+		.action-buttons button:hover:enabled {
+			transform: none;
+			background: var(--gray-800);
+		}
+
+		:global(body.light) .action-buttons button:hover:enabled {
+			background: var(--gray-950);
+		}
+
+		.action-buttons button:active:enabled {
+			transform: scale(0.98);
+			background: var(--gray-700);
+			border-color: var(--gray-600);
+		}
+
+		:global(body.light) .action-buttons button:active:enabled {
+			background: var(--gray-900);
+			border-color: var(--gray-700);
+		}
 	}
 
 	.action-buttons button:disabled {
@@ -184,7 +263,7 @@
 		.button-row {
 			grid-template-columns: repeat(4, 1fr);
 		}
-		
+
 		.export-json {
 			grid-column: auto;
 		}

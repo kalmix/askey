@@ -8,10 +8,10 @@ export function sanitizeHexColor(input: string, fallback = '#000000') {
 	const value = trimmed.startsWith('#') ? trimmed : `#${trimmed}`;
 	return value.length === 4
 		? `#${value
-			.slice(1)
-			.split('')
-			.map((char) => `${char}${char}`)
-			.join('')}`.toUpperCase()
+				.slice(1)
+				.split('')
+				.map((char) => `${char}${char}`)
+				.join('')}`.toUpperCase()
 		: value.toUpperCase();
 }
 

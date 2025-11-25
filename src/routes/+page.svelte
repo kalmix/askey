@@ -7,7 +7,12 @@
 	import ControlsPanel from '$lib/components/ControlsPanel.svelte';
 	import OutputPanel from '$lib/components/OutputPanel.svelte';
 	import Footer from '$lib/components/Footer.svelte';
-	import type { DitheringName, GradientName } from '$lib/ascii/constants';
+	import {
+		DEFAULT_CONTROLS,
+		type ControlState,
+		type DitheringName,
+		type GradientName
+	} from '$lib/ascii/constants';
 	import type { ConvertedAsciiFrame } from '$lib/ascii/converter';
 	import {
 		copyAsciiToClipboard,
@@ -20,16 +25,16 @@
 		downloadApng
 	} from '$lib/ascii/exporters';
 	import { detectAnimatedFormat } from '$lib/ascii/animation';
+	import { FLOAT_TOLERANCE, THEME_STORAGE_KEY, type Theme } from '$lib/workbench/constants';
 	import {
-		DEFAULT_CONTROLS,
-		FLOAT_TOLERANCE,
-		THEME_STORAGE_KEY,
-		type ControlState,
-		type Theme
-	} from '$lib/workbench/constants';
-	import { clampPercentage, getOpacityFromPercent, getRgbaColor, sanitizeHexColor } from '$lib/workbench/color';
+		clampPercentage,
+		getOpacityFromPercent,
+		getRgbaColor,
+		sanitizeHexColor
+	} from '$lib/workbench/color';
 	import { detectImageTransparency } from '$lib/workbench/imageProcessing';
 	import { convertSourceToAscii, type AnimationFormat } from '$lib/workbench/conversion';
+	import type { WasmError } from '$lib/ascii/error-types';
 
 	type DownloadType = 'txt' | 'svg' | 'png' | 'webp' | 'gif' | 'apng';
 
@@ -50,6 +55,12 @@
 	let isAnimationDetectionPending = $state(false);
 	let errorMessage = $state<string>('');
 	let hasError = $state(false);
+	let useCanvasRenderer = $state(true);
+	let isExporting = $state(false);
+	let exportProgress = $state(0);
+	let exportType = $state<'gif' | 'apng' | null>(null);
+	let wasmErrors = $state<WasmError[]>([]);
+	let currentExportAbortController: AbortController | null = null;
 
 	let characters = $state(DEFAULT_CONTROLS.characters);
 	let brightness = $state(DEFAULT_CONTROLS.brightness);
@@ -69,51 +80,51 @@
 	let animationFrameSkip = $state(DEFAULT_CONTROLS.animationFrameSkip);
 	let animationPlaybackSpeed = $state(DEFAULT_CONTROLS.animationPlaybackSpeed);
 
-	const isDifferent = (current: number, initial: number) => Math.abs(current - initial) > FLOAT_TOLERANCE;
+	const isDifferent = (current: number, initial: number) =>
+		Math.abs(current - initial) > FLOAT_TOLERANCE;
 
 	const hasImage = $derived(Boolean(imageUrl));
 	const hasAdjustments = $derived(
 		hasImage &&
-		(
-			isDifferent(characters, DEFAULT_CONTROLS.characters) ||
-			isDifferent(brightness, DEFAULT_CONTROLS.brightness) ||
-			isDifferent(contrast, DEFAULT_CONTROLS.contrast) ||
-			isDifferent(saturation, DEFAULT_CONTROLS.saturation) ||
-			isDifferent(hue, DEFAULT_CONTROLS.hue) ||
-			isDifferent(grayscale, DEFAULT_CONTROLS.grayscale) ||
-			isDifferent(sepia, DEFAULT_CONTROLS.sepia) ||
-			isDifferent(invertColors, DEFAULT_CONTROLS.invertColors) ||
-			isDifferent(thresholding, DEFAULT_CONTROLS.thresholding) ||
-			isDifferent(sharpness, DEFAULT_CONTROLS.sharpness) ||
-			isDifferent(edgeDetection, DEFAULT_CONTROLS.edgeDetection) ||
-			isDifferent(spaceDensity, DEFAULT_CONTROLS.spaceDensity) ||
-			selectedGradient !== DEFAULT_CONTROLS.selectedGradient ||
-			ditheringMethod !== DEFAULT_CONTROLS.ditheringMethod ||
-			isDifferent(animationFrameLimit, DEFAULT_CONTROLS.animationFrameLimit) ||
-			isDifferent(animationFrameSkip, DEFAULT_CONTROLS.animationFrameSkip) ||
-			isDifferent(animationPlaybackSpeed, DEFAULT_CONTROLS.animationPlaybackSpeed)
-		)
+			(isDifferent(characters, DEFAULT_CONTROLS.characters) ||
+				isDifferent(brightness, DEFAULT_CONTROLS.brightness) ||
+				isDifferent(contrast, DEFAULT_CONTROLS.contrast) ||
+				isDifferent(saturation, DEFAULT_CONTROLS.saturation) ||
+				isDifferent(hue, DEFAULT_CONTROLS.hue) ||
+				isDifferent(grayscale, DEFAULT_CONTROLS.grayscale) ||
+				isDifferent(sepia, DEFAULT_CONTROLS.sepia) ||
+				isDifferent(invertColors, DEFAULT_CONTROLS.invertColors) ||
+				isDifferent(thresholding, DEFAULT_CONTROLS.thresholding) ||
+				isDifferent(sharpness, DEFAULT_CONTROLS.sharpness) ||
+				isDifferent(edgeDetection, DEFAULT_CONTROLS.edgeDetection) ||
+				isDifferent(spaceDensity, DEFAULT_CONTROLS.spaceDensity) ||
+				selectedGradient !== DEFAULT_CONTROLS.selectedGradient ||
+				ditheringMethod !== DEFAULT_CONTROLS.ditheringMethod ||
+				isDifferent(animationFrameLimit, DEFAULT_CONTROLS.animationFrameLimit) ||
+				isDifferent(animationFrameSkip, DEFAULT_CONTROLS.animationFrameSkip) ||
+				isDifferent(animationPlaybackSpeed, DEFAULT_CONTROLS.animationPlaybackSpeed))
 	);
 
-	const getControlsSnapshot = () => ({
-		characters,
-		brightness,
-		contrast,
-		saturation,
-		hue,
-		grayscale,
-		sepia,
-		invertColors,
-		thresholding,
-		sharpness,
-		edgeDetection,
-		spaceDensity,
-		selectedGradient,
-		ditheringMethod,
-		animationFrameLimit,
-		animationFrameSkip,
-		animationPlaybackSpeed
-	}) satisfies ControlState;
+	const getControlsSnapshot = () =>
+		({
+			characters,
+			brightness,
+			contrast,
+			saturation,
+			hue,
+			grayscale,
+			sepia,
+			invertColors,
+			thresholding,
+			sharpness,
+			edgeDetection,
+			spaceDensity,
+			selectedGradient,
+			ditheringMethod,
+			animationFrameLimit,
+			animationFrameSkip,
+			animationPlaybackSpeed
+		}) satisfies ControlState;
 
 	const getExportBgOpacity = () => getOpacityFromPercent(exportBgAlpha);
 	const getExportBgColor = () => getRgbaColor(exportBgHex, exportBgAlpha);
@@ -135,8 +146,8 @@
 		const storedTheme = (localStorage.getItem(THEME_STORAGE_KEY) as Theme | null) ?? 'dark';
 		theme = storedTheme;
 		applyTheme(storedTheme);
-			console.clear(); // shhhhhh
-	        console.log('Hello Fellow Dev! ಠ‿↼');
+		console.clear(); // shhhhhh
+		console.log('Hello Fellow Dev! ಠ‿↼');
 	});
 
 	onDestroy(() => {
@@ -217,7 +228,8 @@
 			if (currentDetectionId === animationDetectionId) {
 				animationFormat = 'none';
 				isAnimatedImage = false;
-				errorMessage = 'Failed to process animation. The file may be corrupted or in an unsupported format.';
+				errorMessage =
+					'Failed to process animation. The file may be corrupted or in an unsupported format.';
 				hasError = true;
 				isProcessing = false;
 			}
@@ -314,7 +326,10 @@
 
 	function handleDownloadSvg() {
 		if (!asciiOutput) return;
-		downloadSvg(asciiOutput, theme, { transparentBackground: exportTransparent, filename: imageName });
+		downloadSvg(asciiOutput, theme, {
+			transparentBackground: exportTransparent,
+			filename: imageName
+		});
 	}
 
 	function handleDownloadPng() {
@@ -324,7 +339,8 @@
 		downloadPng(asciiOutput, theme, {
 			transparentBackground,
 			backgroundColor,
-			filename: imageName
+			filename: imageName,
+			useCanvasRenderer
 		});
 	}
 
@@ -335,41 +351,122 @@
 		downloadWebp(asciiOutput, theme, {
 			transparentBackground,
 			backgroundColor,
-			filename: imageName
+			filename: imageName,
+			useCanvasRenderer
 		});
 	}
 
-	function handleDownloadGif() {
+	async function handleDownloadGif() {
 		if (!asciiFrames || asciiFrames.length === 0) return;
-		const transparentBackground = isExportBgTransparent();
-		const backgroundColor = transparentBackground ? undefined : getExportBgColor();
-		void downloadGif(asciiFrames, theme, {
-			transparentBackground,
-			backgroundColor,
-			filename: imageName
-		});
+		isExporting = true;
+		exportProgress = 0;
+		exportType = 'gif';
+		hasError = false;
+		errorMessage = '';
+
+		// Create abort controller for this export
+		currentExportAbortController = new AbortController();
+		const signal = currentExportAbortController.signal;
+
+		try {
+			const transparentBackground = isExportBgTransparent();
+			const backgroundColor = transparentBackground ? undefined : getExportBgColor();
+			await downloadGif(asciiFrames, theme, {
+				transparentBackground,
+				backgroundColor,
+				filename: imageName,
+				useCanvasRenderer,
+				onProgress: (p) => (exportProgress = p),
+				onError: (error: WasmError) => {
+					// Add WASM error to the list
+					wasmErrors = [...wasmErrors, error];
+				},
+				signal
+			});
+		} catch (error) {
+			// Don't show error if it was cancelled
+			if (error instanceof Error && error.message === 'Conversion cancelled') {
+				console.log('GIF export cancelled by user');
+			} else {
+				console.error('GIF export failed:', error);
+				errorMessage = error instanceof Error ? error.message : 'Failed to export GIF';
+				hasError = true;
+			}
+		} finally {
+			currentExportAbortController = null;
+			isExporting = false;
+			exportProgress = 0;
+			exportType = null;
+		}
 	}
 
-	function handleDownloadApng() {
+	async function handleDownloadApng() {
 		if (!asciiFrames || asciiFrames.length === 0) return;
-		const transparentBackground = isExportBgTransparent();
-		const backgroundColor = transparentBackground ? undefined : getExportBgColor();
-		void downloadApng(asciiFrames, theme, {
-			transparentBackground,
-			backgroundColor,
-			filename: imageName
-		});
+		isExporting = true;
+		exportProgress = 0;
+		exportType = 'apng';
+		hasError = false;
+		errorMessage = '';
+
+		currentExportAbortController = new AbortController();
+		const signal = currentExportAbortController.signal;
+
+		try {
+			const transparentBackground = isExportBgTransparent();
+			const backgroundColor = transparentBackground ? undefined : getExportBgColor();
+			await downloadApng(asciiFrames, theme, {
+				transparentBackground,
+				backgroundColor,
+				filename: imageName,
+				useCanvasRenderer,
+				onProgress: (p) => (exportProgress = p),
+				onError: (error: WasmError) => {
+					// Add WASM error to the list
+					wasmErrors = [...wasmErrors, error];
+				},
+				signal
+			});
+		} catch (error) {
+			if (error instanceof Error && error.message === 'Conversion cancelled') {
+				console.log('APNG export cancelled by user');
+			} else {
+				console.error('APNG export failed:', error);
+				errorMessage = error instanceof Error ? error.message : 'Failed to export APNG';
+				hasError = true;
+			}
+		} finally {
+			currentExportAbortController = null;
+			isExporting = false;
+			exportProgress = 0;
+			exportType = null;
+		}
+	}
+
+	function handleCancelExport() {
+		if (currentExportAbortController) {
+			currentExportAbortController.abort();
+			currentExportAbortController = null;
+		}
+		isExporting = false;
+		exportProgress = 0;
+		exportType = null;
+	}
+
+	function handleDismissError(index: number) {
+		wasmErrors = wasmErrors.filter((_, i) => i !== index);
 	}
 
 	function handleExportAnimation() {
 		if (!asciiFrames || asciiFrames.length === 0) return;
-		const filename = imageName ? `${imageName.replace(/\.[^/.]+$/, '')}-animation.json` : 'ascii-animation.json';
+		const filename = imageName
+			? `${imageName.replace(/\.[^/.]+$/, '')}-animation.askey`
+			: 'ascii-animation.askey';
 		void downloadAnimationJson(asciiFrames, filename);
 	}
 
-	function handleOutputDownload(event: CustomEvent<{ type: DownloadType }>) {
+	function handleOutputDownload(event: { type: DownloadType }) {
 		if (!asciiOutput) return;
-		switch (event.detail.type) {
+		switch (event.type) {
 			case 'txt':
 				handleDownloadTxt();
 				break;
@@ -454,7 +551,6 @@
 		const file = event.dataTransfer?.files?.[0] ?? null;
 		void handleFileSelection(file);
 	}
-
 </script>
 
 <div
@@ -484,23 +580,28 @@
 	</header>
 
 	{#if hasError && errorMessage}
-		<div class="error-message" role="alert" aria-live="assertive" transition:slide={{ duration: 300 }}>
+		<div
+			class="error-message"
+			role="alert"
+			aria-live="assertive"
+			transition:slide={{ duration: 200 }}
+		>
 			<span class="error-icon">⚠</span>
 			<p>{errorMessage}</p>
 		</div>
 	{/if}
 
 	<div class="main-content">
-		<!-- For later I need to research more about dithering -->
+		<!-- For later I need to read more about dithering -->
 		<!-- bind:ditheringMethod -->
 		<!-- bind:spaceDensity -->
 		<ControlsPanel
-			hasImage={hasImage}
-			hasAdjustments={hasAdjustments}
-			hasError={hasError}
+			{hasImage}
+			{hasAdjustments}
+			{hasError}
 			selectedFileName={imageName}
 			dragActive={isDragActive}
-			isAnimatedImage={isAnimatedImage}
+			{isAnimatedImage}
 			bind:characters
 			bind:brightness
 			bind:contrast
@@ -513,25 +614,26 @@
 			bind:sharpness
 			bind:edgeDetection
 			bind:selectedGradient
+			bind:useCanvasRenderer
 			bind:animationFrameLimit
 			bind:animationFrameSkip
 			bind:animationPlaybackSpeed
-			on:fileSelect={(event: { detail: File | null; }) => void handleFileSelection(event.detail)}
-			on:reset={resetControls}
+			onfileselect={(file) => handleFileSelection(file)}
+			onreset={resetControls}
 		>
-			<svelte:fragment slot="actions">
+			{#snippet actions()}
 				<div class="actions-bar">
 					<ActionButtons
 						disabled={!asciiOutput}
 						isAnimated={isAnimatedImage}
-						on:copy={handleCopy}
-						on:downloadTxt={handleDownloadTxt}
-						on:downloadSvg={handleDownloadSvg}
-						on:downloadPng={handleDownloadPng}
-						on:downloadWebp={handleDownloadWebp}
-						on:downloadGif={handleDownloadGif}
-						on:downloadApng={handleDownloadApng}
-						on:exportAnimation={handleExportAnimation}
+						oncopy={handleCopy}
+						ondownloadTxt={handleDownloadTxt}
+						ondownloadSvg={handleDownloadSvg}
+						ondownloadPng={handleDownloadPng}
+						ondownloadWebp={handleDownloadWebp}
+						ondownloadGif={handleDownloadGif}
+						ondownloadApng={handleDownloadApng}
+						onexportAnimation={handleExportAnimation}
 					/>
 					{#if imageHasTransparency}
 						<div class="export-options">
@@ -543,8 +645,8 @@
 								bind:alpha={exportBgAlpha}
 							/>
 							<label class="export-toggle">
-								<input 
-									type="checkbox" 
+								<input
+									type="checkbox"
 									checked={exportTransparent}
 									onchange={(e: Event) => {
 										const target = e.target as HTMLInputElement;
@@ -561,20 +663,25 @@
 						</div>
 					{/if}
 				</div>
-			</svelte:fragment>
+			{/snippet}
 		</ControlsPanel>
 
-		<OutputPanel 
-			{isProcessing} 
-			{asciiOutput} 
-			{isAnimatedImage} 
-			{imageUrl} 
+		<OutputPanel
+			{isProcessing}
+			{asciiOutput}
+			{isAnimatedImage}
 			{asciiFrames}
-			on:download={handleOutputDownload}
-			on:export={handleExportAnimation}
+			{useCanvasRenderer}
+			{isExporting}
+			{exportProgress}
+			{exportType}
+			{wasmErrors}
+			ondownload={handleOutputDownload}
+			onexport={handleExportAnimation}
+			ondismissError={handleDismissError}
+			oncancel={handleCancelExport}
 		/>
 	</div>
 
 	<Footer />
 </div>
-

@@ -21,7 +21,11 @@ declare module 'gifenc' {
 		finish(): void;
 		bytes(): Uint8Array;
 		bytesView(): Uint8Array;
-		writeHeader(width: number, height: number, options?: { palette?: number[][]; colorDepth?: number }): void;
+		writeHeader(
+			width: number,
+			height: number,
+			options?: { palette?: number[][]; colorDepth?: number }
+		): void;
 		writeFrame(pixels: Uint8Array, width: number, height: number, options: GIFFrameOptions): void;
 	}
 

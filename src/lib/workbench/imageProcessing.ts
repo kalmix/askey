@@ -7,7 +7,12 @@ function createSampleCanvas(width: number, height: number) {
 	return canvas.getContext('2d', { willReadFrequently: true });
 }
 
-export function inspectTransparency(source: CanvasImageSource, width: number, height: number, sampleLimit = TRANSPARENCY_SAMPLE_LIMIT) {
+export function inspectTransparency(
+	source: CanvasImageSource,
+	width: number,
+	height: number,
+	sampleLimit = TRANSPARENCY_SAMPLE_LIMIT
+) {
 	const maxDimension = Math.max(1, Math.max(width, height));
 	const scale = Math.min(1, sampleLimit / maxDimension);
 	const scaledWidth = Math.max(1, Math.round(width * scale));

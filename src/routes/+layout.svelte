@@ -41,10 +41,7 @@
 	<meta property="og:url" content="https://askey.vercel.app" />
 	<meta name="twitter:card" content="summary_large_image" />
 	<meta name="twitter:title" content="asꄗ · Graphics to ASCII Converter" />
-	<meta
-		name="twitter:description"
-		content="Convert any static or animated image into ASCII art."
-	/>
+	<meta name="twitter:description" content="Convert any static or animated image into ASCII art." />
 	<meta name="theme-color" content="#fff" />
 </svelte:head>
 

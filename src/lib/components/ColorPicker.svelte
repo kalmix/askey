@@ -21,7 +21,11 @@
 
 	function openNativePicker() {
 		if (!browser) return;
-		colorInput?.showPicker?.() ?? colorInput?.click();
+		if (colorInput?.showPicker) {
+			colorInput.showPicker();
+		} else {
+			colorInput?.click();
+		}
 	}
 </script>
 
@@ -30,11 +34,11 @@
 		<label for={id}>{label}</label>
 		<span class="color-value">{color.toUpperCase()}</span>
 	</div>
-	<button 
-		type="button" 
-		class="color-swatch" 
-		style={`--swatch-color: ${color}`} 
-		on:click={openNativePicker} 
+	<button
+		type="button"
+		class="color-swatch"
+		style={`--swatch-color: ${color}`}
+		on:click={openNativePicker}
 		aria-label={`Select ${label}`}
 	>
 		<div class="swatch-preview">
@@ -102,7 +106,9 @@
 		padding: 0;
 		cursor: pointer;
 		overflow: hidden;
-		transition: border-color 0.15s ease, transform 0.15s ease;
+		transition:
+			border-color 0.15s ease,
+			transform 0.15s ease;
 	}
 
 	.color-swatch:hover,

@@ -1,28 +1,29 @@
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
-
 	interface Option {
 		value: string;
 		label: string;
 	}
 
-	export let id: string;
-	export let label: string;
-	export let value: string;
-	export let options: Option[];
+	interface Props {
+		id: string;
+		label: string;
+		value: string;
+		options: Option[];
+		onvalue?: (value: string) => void;
+	}
 
-	const dispatch = createEventDispatcher<{ value: string }>();
+	let { id, label, value = $bindable(), options, onvalue }: Props = $props();
 
 	function handleChange(event: Event) {
 		value = (event.target as HTMLSelectElement).value;
-		dispatch('value', value);
+		onvalue?.(value);
 	}
 </script>
 
 <div class="control-row">
 	<label class="control-label" for={id}>{label}</label>
-	<select id={id} class="control-select" bind:value={value} onchange={handleChange}>
-		{#each options as option}
+	<select {id} class="control-select" bind:value onchange={handleChange}>
+		{#each options as option (option.value)}
 			<option value={option.value}>{option.label}</option>
 		{/each}
 	</select>

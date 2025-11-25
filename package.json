@@ -1,7 +1,7 @@
 {
 	"name": "askey",
 	"private": true,
-	"version": "0.0.1",
+	"version": "0.1.0",
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
@@ -52,6 +52,7 @@
 	"dependencies": {
 		"@sveltejs/adapter-auto": "^7.0.0",
 		"gifenc": "^1.0.3",
+		"gifski-wasm": "^2.2.0",
 		"gifuct-js": "^2.1.2",
 		"upng-js": "^2.1.0"
 	}

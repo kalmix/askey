@@ -40,8 +40,8 @@ You can export animations in a `json.gz` format and play it everywhere in the we
 
 ## Screenshots
 
-|                     Init                     |                     ASCII Conversion                     |
-| :--------------------------------------------------: | :------------------------------------------------------: |
+|                                      Init                                       |                                               ASCII Conversion                                               |
+| :-----------------------------------------------------------------------------: | :----------------------------------------------------------------------------------------------------------: |
 | ![VERT upload page](https://ucarecdn.com/0c223453-627f-45f7-9209-04bb83032c7c/) | ![VERT convert page](https://ucarecdn.com/c4a00a1b-40bd-49ee-a402-8405c2d45410/Screenshot20251118093222.png) |
 
 ## 🖪 Running the project locally
@@ -59,8 +59,7 @@ npm run check && npm run lint
 
 The dev server hot-reloads when you edit files inside `src/`. Use `npm run check -- --watch` for incremental accessibility + type checks while iterating on components.
 
-
-## 🛪 Deployment 
+## 🛪 Deployment
 
 1. `npm run check` – type and accessibility safety net.
 2. `npm run lint` – ESLint + Prettier formatting.
@@ -69,6 +68,7 @@ The dev server hot-reloads when you edit files inside `src/`. Use `npm run check
 5. Deploy the adapter output (`.vercel/output`, `.netlify`, or `build`) to your host of choice.
 
 ## Roadmap
+
 - [x] "Universal" export file for ASCII animations.
 - [x] Offline support with service workers.
 - [ ] C# terminal player for `json.gz` files. (see: [askey-cli](#askey-cli))
@@ -80,8 +80,8 @@ The dev server hot-reloads when you edit files inside `src/`. Use `npm run check
 - [ ] Build a site to share and download asꄗ animations.
 
 ## asꄗ cli (comming soon)
-A .NET CLI tool will be available to run ASCII animations directly in the terminal using exported `json.gz` files. 
 
+A .NET CLI tool will be available to run ASCII animations directly in the terminal using exported `json.gz` files.
 
 ## ⛃ Tech stack
 

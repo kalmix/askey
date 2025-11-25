@@ -1,70 +1,135 @@
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
+	import { type Snippet } from 'svelte';
 
-	import { ASCII_GRADIENTS, DITHERING_METHODS, type DitheringName, type GradientName } from '$lib/ascii/constants';
+	import {
+		ASCII_GRADIENTS,
+		// DITHERING_METHODS,
+		RENDER_MODE_OPTIONS,
+		// type DitheringName,
+		type GradientName
+	} from '$lib/ascii/constants';
 
 	import ControlSection from './ControlSection.svelte';
 	import SelectControl from './SelectControl.svelte';
 	import SliderControl from './SliderControl.svelte';
 
-	export let hasImage = false;
-	export let hasError = false;
-	export let selectedFileName = '';
-	export let dragActive = false;
-	export let characters: number;
-	export let brightness: number;
-	export let contrast: number;
-	export let saturation: number;
-	export let hue: number;
-	export let grayscale: number;
-	export let sepia: number;
-	export let invertColors: number;
-	export let thresholding: number;
-	export let sharpness: number;
-	export let edgeDetection: number;
-	// export let spaceDensity: number;
-	export let selectedGradient: GradientName;
-	// export let ditheringMethod: DitheringName;
-	export let hasAdjustments = false;
-	export let isAnimatedImage = false;
-	export let animationFrameLimit: number;
-	export let animationFrameSkip: number;
-	export let animationPlaybackSpeed: number;
+	let {
+		hasImage = false,
+		hasError = false,
+		selectedFileName = '',
+		dragActive = false,
+		characters = $bindable(),
+		brightness = $bindable(),
+		contrast = $bindable(),
+		saturation = $bindable(),
+		hue = $bindable(),
+		grayscale = $bindable(),
+		sepia = $bindable(),
+		invertColors = $bindable(),
+		thresholding = $bindable(),
+		sharpness = $bindable(),
+		edgeDetection = $bindable(),
+		selectedGradient = $bindable(),
+		useCanvasRenderer = $bindable(true),
+		hasAdjustments = false,
+		isAnimatedImage = false,
+		animationFrameLimit = $bindable(),
+		animationFrameSkip = $bindable(),
+		animationPlaybackSpeed = $bindable(),
+		actions,
+		onfileselect,
+		onreset
+	} = $props<{
+		hasImage?: boolean;
+		hasError?: boolean;
+		selectedFileName?: string;
+		dragActive?: boolean;
+		characters?: number;
+		brightness?: number;
+		contrast?: number;
+		saturation?: number;
+		hue?: number;
+		grayscale?: number;
+		sepia?: number;
+		invertColors?: number;
+		thresholding?: number;
+		sharpness?: number;
+		edgeDetection?: number;
+		selectedGradient?: GradientName;
+		useCanvasRenderer?: boolean;
+		hasAdjustments?: boolean;
+		isAnimatedImage?: boolean;
+		animationFrameLimit?: number;
+		animationFrameSkip?: number;
+		animationPlaybackSpeed?: number;
+		actions?: Snippet;
+		onfileselect?: (file: File | null) => void;
+		onreset?: () => void;
+	}>();
 
-	const dispatch = createEventDispatcher<{ fileSelect: File | null; reset: void }>();
-
-	let showBasicControls = false;
-	let showColorControls = false;
-	let showEffectsControls = false;
-	let showAdvancedControls = false;
-	let showAnimationControls = false;
+	let showBasicControls = $state(false);
+	let showColorControls = $state(false);
+	let showEffectsControls = $state(false);
+	let showAdvancedControls = $state(false);
+	let showAnimationControls = $state(false);
 
 	const gradientOptions = Object.keys(ASCII_GRADIENTS).map((key) => ({ value: key, label: key }));
-	const ditheringOptions = Object.keys(DITHERING_METHODS).map((key) => ({ value: key, label: key }));
+	// const ditheringOptions = Object.keys(DITHERING_METHODS).map((key) => ({
+	// 	value: key,
+	// 	label: key
+	// }));
+
+	let renderMode = $state(useCanvasRenderer ? 'canvas' : 'dom');
+
+	$effect(() => {
+		useCanvasRenderer = renderMode === 'canvas';
+	});
 
 	function handleFileSelect(event: Event) {
 		const target = event.target as HTMLInputElement;
-		const file = target.files?.[0] ?? null;
-		target.value = '';
-		dispatch('fileSelect', file);
+		const file = target.files?.[0];
+
+		// small delay
+		setTimeout(() => {
+			target.value = '';
+		}, 200);
+
+		if (file) {
+			onfileselect?.(file);
+		}
 	}
 
 	function handleResetClick() {
-		dispatch('reset');
+		onreset?.();
 	}
 </script>
 
 <section class="controls-panel">
 	<div class="upload-card" class:drag-ready={dragActive}>
+		<label class="file-input-overlay" for="image-upload" aria-label="Upload file"></label>
 		<div class="upload-content">
-			<label class="file-input-label" for="image-upload">
-				<span class="upload-title">{hasImage ? 'Replace image/animated sequence' : 'Upload or drop an image/animated sequence'}</span>
+			<div class="file-input-label">
+				<span class="upload-title desktop-text"
+					>{hasImage
+						? 'Replace image/animated sequence'
+						: 'Upload or drop an image/animated sequence'}</span
+				>
+				<span class="upload-title mobile-text"
+					>{hasImage
+						? 'Tap here to replace image/sequence'
+						: 'Tap here to upload an image/sequence'}</span
+				>
 				<span class="upload-hint">PNG, JPG, GIF, SVG, WEBP, APNG...</span>
 				<span class="file-name" title={selectedFileName || 'No file selected'}>
 					{selectedFileName || 'No file selected'}
 				</span>
-			</label>
-			<p class="drag-helper">Drag a file anywhere on the page to load an image or animated sequence</p>
+			</div>
+			<p class="drag-helper">
+				<span class="desktop-text"
+					>Drag a file anywhere on the page to load an image or animated sequence</span
+				>
+				<span class="mobile-text">Tap the area above to load an image or sequence</span>
+			</p>
 		</div>
 		<div class="upload-meta">
 			<button
@@ -76,7 +141,13 @@
 				Reset adjustments
 			</button>
 		</div>
-		<input id="image-upload" type="file" accept="image/*" class="file-input" onchange={handleFileSelect} />
+		<input
+			id="image-upload"
+			type="file"
+			accept="image/*"
+			class="file-input"
+			onchange={handleFileSelect}
+		/>
 	</div>
 
 	{#if hasImage && !hasError}
@@ -180,7 +251,7 @@
 					max={255}
 					bind:value={thresholding}
 				/>
-	 		</ControlSection>
+			</ControlSection>
 
 			{#if isAnimatedImage}
 				<ControlSection title="Animation" bind:isOpen={showAnimationControls}>
@@ -188,7 +259,7 @@
 						id="animation-frame-limit"
 						label="Frame limit"
 						min={2}
-						max={150}
+						max={400}
 						step={1}
 						bind:value={animationFrameLimit}
 					/>
@@ -213,9 +284,15 @@
 				</ControlSection>
 			{/if}
 
-			<!-- ! TODO -->
-			<!-- <ControlSection title="Advanced" bind:isOpen={showAdvancedControls}>
-				<SliderControl
+			<ControlSection title="Advanced" bind:isOpen={showAdvancedControls}>
+				<SelectControl
+					id="render-mode-select"
+					label="Render Mode"
+					bind:value={renderMode}
+					options={RENDER_MODE_OPTIONS}
+				/>
+				<!-- ! TODO: Implement these controls -->
+				<!-- <SliderControl
 					id="space-density-control"
 					label="Space Density"
 					min={0}
@@ -229,11 +306,11 @@
 					label="Dithering Method"
 					bind:value={ditheringMethod}
 					options={ditheringOptions}
-				/>
-			</ControlSection> -->
+				/> -->
+			</ControlSection>
 		</div>
 
-		<slot name="actions"></slot>
+		{@render actions?.()}
 	{/if}
 </section>
 
@@ -241,22 +318,34 @@
 	.controls-panel {
 		background: var(--bg-secondary);
 		border: 1px solid var(--border-color);
-		padding: 1.5rem;
+		padding: 1rem;
 		display: flex;
 		flex-direction: column;
 		gap: 1rem;
 		width: 100%;
 		min-width: 0;
-		transition: height 0.3s ease, padding 0.3s ease;
+		transition:
+			height 0.3s ease,
+			padding 0.3s ease;
+	}
+
+	@media (min-width: 768px) {
+		.controls-panel {
+			padding: 1.5rem;
+		}
 	}
 
 	.upload-card {
+		position: relative;
 		border: 1px dashed var(--border-color);
 		padding: 1rem;
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
-		transition: border-color 0.2s ease, background 0.2s ease;
+		transition:
+			border-color 0.2s ease,
+			background 0.2s ease;
+		-webkit-tap-highlight-color: transparent;
 	}
 
 	.upload-card:hover {
@@ -267,6 +356,13 @@
 	.upload-card.drag-ready {
 		border-color: var(--gray-500);
 		background: var(--bg-tertiary);
+	}
+
+	.file-input-overlay {
+		position: absolute;
+		inset: 0;
+		cursor: pointer;
+		z-index: 1;
 	}
 
 	.upload-content {
@@ -280,11 +376,43 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.25rem;
-		cursor: pointer;
+		padding: 0.5rem;
+		margin: -0.5rem;
+		-webkit-tap-highlight-color: transparent;
+		pointer-events: none;
+	}
+
+	@media (hover: none) {
+		.file-input-label:active {
+			opacity: 0.7;
+		}
 	}
 
 	.upload-title {
 		font-weight: 600;
+		font-size: 0.9375rem;
+	}
+
+	.mobile-text {
+		display: inline;
+	}
+
+	.desktop-text {
+		display: none;
+	}
+
+	@media (min-width: 768px) {
+		.upload-title {
+			font-size: 1rem;
+		}
+
+		.mobile-text {
+			display: none;
+		}
+
+		.desktop-text {
+			display: inline;
+		}
 	}
 
 	.upload-hint,
@@ -305,22 +433,41 @@
 	.upload-meta {
 		display: flex;
 		justify-content: flex-end;
+		position: relative;
+		z-index: 2;
+		pointer-events: none;
 	}
 
 	.ghost-button {
-		padding: 0.5rem 1rem;
-		background: transparent;
-		border: 1px solid var(--border-color);
+		padding: 0.625rem 1rem;
+		min-height: 44px;
+		background: var(--bg-secondary);
+		border: 1px solid var(--gray-400);
 		color: var(--text-primary);
 		cursor: pointer;
 		font-family: 'Inconsolata', monospace;
 		font-size: 0.875rem;
-		transition: background 0.2s ease, border-color 0.2s ease;
+		transition:
+			background 0.2s ease,
+			border-color 0.2s ease;
+		-webkit-tap-highlight-color: transparent;
+		pointer-events: auto;
 	}
 
 	.ghost-button:hover:enabled {
 		background: var(--bg-tertiary);
 		border-color: var(--gray-500);
+	}
+
+	@media (hover: none) {
+		.ghost-button:hover:enabled {
+			background: transparent;
+		}
+
+		.ghost-button:active:enabled {
+			background: var(--bg-tertiary);
+			border-color: var(--gray-500);
+		}
 	}
 
 	.ghost-button:disabled {

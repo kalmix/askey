@@ -12,9 +12,7 @@ export default {
 		'^.+\\.ts$': 'ts-jest',
 		'^.+\\.js$': 'babel-jest'
 	},
-	transformIgnorePatterns: [
-		'node_modules/(?!(@testing-library/svelte)/)'
-	],
+	transformIgnorePatterns: ['node_modules/(?!(@testing-library/svelte)/)'],
 	moduleNameMapper: {
 		'^\\$lib(.*)$': '<rootDir>/src/lib$1',
 		'^\\$app(.*)$': '<rootDir>/src/app.d.ts',

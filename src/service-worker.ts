@@ -1,77 +1,65 @@
-/// <reference lib="webworker" />
 /// <reference types="@sveltejs/kit" />
-
+/// <reference lib="webworker" />
 import { build, files, version } from '$service-worker';
 
 declare const self: ServiceWorkerGlobalScope;
+const CACHE = `cache-${version}`;
 
-const CACHE_NAME = `askey-cache-${version}`;
 const ASSETS = [...build, ...files];
 
-const handleInstall = (event: ExtendableEvent) => {
-	event.waitUntil(
-		caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())
-	);
-};
+self.addEventListener('install', (event: ExtendableEvent) => {
+	async function addFilesToCache() {
+		const cache = await caches.open(CACHE);
+		await cache.addAll(ASSETS);
+	}
+	event.waitUntil(addFilesToCache());
+	self.skipWaiting();
+});
 
-const handleActivate = (event: ExtendableEvent) => {
-	event.waitUntil(
-		caches.keys().then((keys) =>
-			Promise.all(
-				keys
-					.filter((key) => key.startsWith('askey-cache-') && key !== CACHE_NAME)
-					.map((key) => caches.delete(key))
-			)
-		).then(() => self.clients.claim())
-	);
-};
-
-const handleFetch = (event: FetchEvent) => {
-    const request = event.request;
-	if (request.method !== 'GET') {
-		return;
+self.addEventListener('activate', (event: ExtendableEvent) => {
+	async function deleteOldCaches() {
+		for (const key of await caches.keys()) {
+			if (key !== CACHE) await caches.delete(key);
+		}
 	}
 
-	const url = new URL(request.url);
+	event.waitUntil(deleteOldCaches());
+	self.clients.claim();
+});
 
-	if (ASSETS.includes(url.pathname)) {
-		event.respondWith(caches.match(request).then((cached) => cached ?? fetch(request)));
-		return;
-	}
+self.addEventListener('fetch', (event: FetchEvent) => {
+	if (event.request.method !== 'GET') return;
 
-	if (url.origin === self.location.origin) {
-		if (request.headers.get('accept')?.includes('text/html')) {
-			event.respondWith(
-				fetch(request)
-					.then((response) => {
-						const copy = response.clone();
-						const cacheResponse = copy.ok ? copy : null;
-						if (cacheResponse) {
-							caches.open(CACHE_NAME).then((cache) => cache.put(request, cacheResponse));
-						}
-						return response;
-					})
-					.catch(async () => (await caches.match(request)) ?? (await caches.match('/')) ?? Response.error())
-			);
-			return;
+	async function respond() {
+		const url = new URL(event.request.url);
+		const cache = await caches.open(CACHE);
+
+		if (ASSETS.includes(url.pathname)) {
+			const response = await cache.match(url.pathname);
+
+			if (response) {
+				return response;
+			}
 		}
 
-		event.respondWith(
-			caches.match(request).then(
-				(cached) =>
-					cached ||
-					fetch(request).then((response) => {
-						const copy = response.clone();
-						if (copy.ok) {
-							caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-						}
-						return response;
-					})
-			)
-		);
-	}
-};
+		try {
+			const response = await fetch(event.request);
 
-self.addEventListener('install', handleInstall);
-self.addEventListener('activate', handleActivate);
-self.addEventListener('fetch', handleFetch);
+			if (response.status === 200) {
+				cache.put(event.request, response.clone());
+			}
+
+			return response;
+		} catch {
+			const response = await cache.match(event.request);
+
+			if (response) {
+				return response;
+			}
+		}
+
+		return new Response('Not found', { status: 404 });
+	}
+
+	event.respondWith(respond());
+});

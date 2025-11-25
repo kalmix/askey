@@ -1,17 +1,21 @@
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
 	import { slide } from 'svelte/transition';
 
-	export let title: string;
-	export let isOpen = true;
+	interface Props {
+		title: string;
+		isOpen?: boolean;
+		ontoggle?: (isOpen: boolean) => void;
+		children?: import('svelte').Snippet;
+	}
 
-	const dispatch = createEventDispatcher<{ toggle: boolean }>();
+	let { title, isOpen = $bindable(true), ontoggle, children }: Props = $props();
+
 	const sectionId = `control-section-${crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2, 9)}`;
 	const contentId = `${sectionId}-content`;
 
 	function handleToggle() {
 		isOpen = !isOpen;
-		dispatch('toggle', isOpen);
+		ontoggle?.(isOpen);
 	}
 </script>
 
@@ -27,8 +31,8 @@
 		<span class="section-icon" class:collapsed={!isOpen}>▼</span>
 	</button>
 	{#if isOpen}
-		<div class="section-content" id={contentId} transition:slide={{ duration: 300 }}>
-			<slot />
+		<div class="section-content" id={contentId} transition:slide={{ duration: 200 }}>
+			{@render children?.()}
 		</div>
 	{/if}
 </div>
@@ -68,7 +72,7 @@
 
 	.section-icon {
 		font-size: 0.875rem;
-		transition: transform 0.3s ease;
+		transition: transform 0.2s ease;
 		display: inline-block;
 		opacity: 0.7;
 	}

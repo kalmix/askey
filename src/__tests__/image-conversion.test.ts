@@ -3,7 +3,7 @@
  */
 
 import { convertImageToAscii } from '../lib/ascii/converter';
-import { DEFAULT_CONTROLS } from '../lib/workbench/constants';
+import { DEFAULT_CONTROLS } from '../lib/ascii/constants';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -72,7 +72,7 @@ describe('Image to ASCII conversion with real test images', () => {
 
 	it('should generate different output for different character widths', async () => {
 		const imageUrl = loadTestImage('regular.png');
-		
+
 		const result50 = await convertImageToAscii({
 			imageUrl,
 			characters: 50,
@@ -114,7 +114,7 @@ describe('Image to ASCII conversion with real test images', () => {
 
 	it('should use different gradients', async () => {
 		const imageUrl = loadTestImage('regular.png');
-		
+
 		const resultStandard = await convertImageToAscii({
 			imageUrl,
 			characters: 50,
@@ -158,4 +158,3 @@ describe('Image to ASCII conversion with real test images', () => {
 		expect(resultStandard).not.toBe(resultBlocks);
 	});
 });
-

@@ -1,13 +1,13 @@
 <script lang="ts">
-	interface Props {
-		status: number;
-		error: Error & { message?: string };
-	}
+	import { page } from '$app/state';
 
-	let { status, error }: Props = $props();
+	const status = $derived(page.status);
+	const error = $derived(page.error);
 
-	const title = status >= 500 ? 'Something went wrong' : "There's nothing here";
-	const description = error?.message ?? 'This is a Single Page Application... (╯°□°)╯︵ ┻━┻';
+	const title = $derived(
+		status >= 500 ? 'Something went wrong' : 'This is a Single Page Application... (╯°□°)╯'
+	);
+	const description = $derived(error?.message ?? 'Watafaka.. (╯°□°)╯︵ ┻━┻');
 </script>
 
 <section class="error-shell" aria-live="assertive" role="alert">
@@ -15,7 +15,7 @@
 		<p class="error-status">{status}</p>
 		<h1 class="site-title">{title}</h1>
 		<p class="inc-font">{description}</p>
-		<a class="home-link" href="/" aria-label="Back to home">Return home</a>
+		<a class="home-link" href="https://askey.vercel.app/" aria-label="Back to home">Return home</a>
 	</div>
 </section>
 

@@ -1,7 +1,7 @@
 declare module '*.svg' {
+	const content: string;
 
-  const content: string;
-
-  export default content;
-
+	export default content;
 }
+
+declare const __APP_VERSION__: string;

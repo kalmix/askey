@@ -10,7 +10,7 @@ HTMLCanvasElement.prototype.getContext = jest.fn((type) => {
 			width: 400,
 			height: 400
 		};
-		
+
 		return {
 			drawImage: jest.fn(),
 			getImageData: jest.fn(() => imageData),
@@ -33,9 +33,17 @@ global.Image = class MockImage {
 			}
 		}, 0);
 	}
-	
-	get width() { return 400; }
-	get height() { return 400; }
-	set src(value) { this._src = value; }
-	get src() { return this._src; }
+
+	get width() {
+		return 400;
+	}
+	get height() {
+		return 400;
+	}
+	set src(value) {
+		this._src = value;
+	}
+	get src() {
+		return this._src;
+	}
 };

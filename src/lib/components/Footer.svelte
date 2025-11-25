@@ -1,11 +1,11 @@
+<script lang="ts">
+	const version = __APP_VERSION__;
+</script>
+
 <footer class="app-footer">
 	<p class="footer-content">
 		<a href="https://kalmix.vercel.app/" target="_blank" rel="noopener noreferrer"
-			>Made by <img
-				src="https://ucarecdn.com/791c0f2f-450e-43bb-a022-ebd24e19f8c4/-/preview/50x50/"
-				alt="logo"
-				class="kalmix-logo"
-			/></a
+			>Made by <img src="img/logo.avif" alt="logo" class="kalmix-logo" /></a
 		>
 		with
 		<span class="heart">♥</span>
@@ -26,7 +26,21 @@
 		<a href="https://ko-fi.com/kalmix" target="_blank" rel="noopener noreferrer">Donations</a>
 	</p>
 	<p class="footer-copyright footer-links">
-		© Kalmix, {new Date().getFullYear()}. <a href="https://choosealicense.com/licenses/mit/" target="_blank" rel="noopener noreferrer">Licensed under MIT.</a>
+		© Kalmix, {new Date().getFullYear()}.
+		<a href="https://choosealicense.com/licenses/mit/" target="_blank" rel="noopener noreferrer"
+			>Licensed under MIT.</a
+		>
+	</p>
+	<p class="footer-version">
+		<a
+			href="https://github.com/kalmix/askey/fork"
+			target="_blank"
+			rel="noopener noreferrer"
+			class="version-badge"
+		>
+			<span class="fork-icon">⑂</span>
+			{version}-(canvas)
+		</a>
 	</p>
 </footer>
 
@@ -40,6 +54,7 @@
 		text-align: center;
 		border-top: 1px solid var(--border-color, #333);
 		background: var(--bg-secondary, #1a1a1a);
+		position: relative;
 	}
 
 	.footer-content {
@@ -104,5 +119,46 @@
 		margin: 0.5rem 0 0 0;
 		font-size: 0.85rem;
 		color: var(--text-secondary, #888);
+	}
+
+	.footer-version {
+		position: absolute;
+		right: 1.5rem;
+		bottom: 2rem;
+		margin: 0;
+	}
+
+	@media (max-width: 815px) {
+		.footer-version {
+			display: none;
+		}
+	}
+
+	.version-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-left: 1.15rem;
+		padding: 0.4rem 0.8rem;
+		background: transparent;
+		border: 1px solid var(--border-color, #333);
+		color: var(--text-primary, #fff);
+		text-decoration: none;
+		font-family: 'Inconsolata', monospace;
+		font-size: 0.8rem;
+		transition:
+			background 0.2s ease,
+			border-color 0.2s ease;
+	}
+
+	.version-badge:hover {
+		background: var(--bg-tertiary, #222);
+		border-color: var(--gray-500, #666);
+		text-decoration: none;
+	}
+
+	.fork-icon {
+		font-size: 1.2em;
+		line-height: 1;
 	}
 </style>

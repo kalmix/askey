@@ -3,7 +3,7 @@ import UPNG from 'upng-js';
 
 export interface AnimationFrame {
 	imageData: ImageData;
-	delay: number; 
+	delay: number;
 }
 
 export interface AnimationInfo {
@@ -39,16 +39,13 @@ export async function extractApngFrames(file: File): Promise<AnimationInfo> {
 
 export async function detectAnimatedFormat(file: File): Promise<'gif' | 'apng' | 'none'> {
 	const arrayBuffer = await file.arrayBuffer();
-	const bytes = new Uint8Array(arrayBuffer);  
+	const bytes = new Uint8Array(arrayBuffer);
 
-	
 	if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) {
-		
 		if (bytes[3] === 0x38 && bytes[4] === 0x39 && bytes[5] === 0x61) {
-			
 			let imageDescriptorCount = 0;
 			for (let i = 0; i < bytes.length - 1; i++) {
-				if (bytes[i] === 0x2C) { 
+				if (bytes[i] === 0x2c) {
 					imageDescriptorCount++;
 					if (imageDescriptorCount > 1) {
 						return 'gif';
@@ -58,12 +55,14 @@ export async function detectAnimatedFormat(file: File): Promise<'gif' | 'apng' |
 		}
 	}
 
-	
-	if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
-		
+	if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
 		for (let i = 8; i < bytes.length - 4; i++) {
-			if (bytes[i] === 0x61 && bytes[i + 1] === 0x63 && 
-			    bytes[i + 2] === 0x54 && bytes[i + 3] === 0x4C) {
+			if (
+				bytes[i] === 0x61 &&
+				bytes[i + 1] === 0x63 &&
+				bytes[i + 2] === 0x54 &&
+				bytes[i + 3] === 0x4c
+			) {
 				return 'apng';
 			}
 		}
@@ -106,6 +105,13 @@ function decodeGifWithGifuct(bytes: Uint8Array): AnimationInfo {
 	canvas.height = height;
 	const frames: AnimationFrame[] = [];
 
+	const tempCanvas = document.createElement('canvas');
+	const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+
+	if (!tempCtx) {
+		return { frames: [], width: 0, height: 0, isAnimated: false };
+	}
+
 	for (const frame of rawFrames) {
 		const patchArray = new Uint8ClampedArray(frame.patch);
 		const patch = new ImageData(patchArray, frame.dims.width, frame.dims.height);
@@ -114,10 +120,19 @@ function decodeGifWithGifuct(bytes: Uint8Array): AnimationInfo {
 			restoreImage = ctx.getImageData(0, 0, width, height);
 		}
 
-		ctx.putImageData(patch, frame.dims.left, frame.dims.top);
+		// Use a temporary canvas to draw the patch so we can composite it correctly
+		// putImageData replaces pixels (erasing background if transparent),
+		// while drawImage composites (respecting transparency)
+		tempCanvas.width = frame.dims.width;
+		tempCanvas.height = frame.dims.height;
+		tempCtx.putImageData(patch, 0, 0);
+
+		ctx.drawImage(tempCanvas, frame.dims.left, frame.dims.top);
+
 		const frameImageData = ctx.getImageData(0, 0, width, height);
-		const frameDelayHundredths = typeof frame.delay === 'number' && !Number.isNaN(frame.delay) ? frame.delay : 10;
-		const delay = Math.max(frameDelayHundredths, 2) * 10; 
+		const frameDelayHundredths =
+			typeof frame.delay === 'number' && !Number.isNaN(frame.delay) ? frame.delay : 10;
+		const delay = Math.max(frameDelayHundredths, 2) * 10;
 		frames.push({ imageData: frameImageData, delay });
 
 		if (frame.disposalType === 2) {
@@ -173,11 +188,11 @@ async function extractFramesFromAnimatedImage(url: string): Promise<AnimationInf
 	return new Promise((resolve) => {
 		const img = new Image();
 		img.crossOrigin = 'anonymous';
-		
+
 		img.onload = () => {
 			const canvas = document.createElement('canvas');
 			const ctx = canvas.getContext('2d', { willReadFrequently: true });
-			
+
 			if (!ctx) {
 				resolve({ frames: [], width: 0, height: 0, isAnimated: false });
 				return;
@@ -186,13 +201,11 @@ async function extractFramesFromAnimatedImage(url: string): Promise<AnimationInf
 			canvas.width = img.naturalWidth;
 			canvas.height = img.naturalHeight;
 
-			
 			const frames: AnimationFrame[] = [];
-			const frameCount = 15; 
-			const delay = 100; 
+			const frameCount = 15;
+			const delay = 100;
 			let captureCount = 0;
 
-			
 			const captureFrame = () => {
 				if (captureCount >= frameCount) {
 					resolve({
@@ -208,12 +221,11 @@ async function extractFramesFromAnimatedImage(url: string): Promise<AnimationInf
 				ctx.drawImage(img, 0, 0);
 				const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 				frames.push({ imageData, delay });
-				
+
 				captureCount++;
 				setTimeout(() => requestAnimationFrame(captureFrame), delay);
 			};
 
-			
 			setTimeout(() => requestAnimationFrame(captureFrame), 50);
 		};
 
@@ -224,7 +236,6 @@ async function extractFramesFromAnimatedImage(url: string): Promise<AnimationInf
 		img.src = url;
 	});
 }
-
 
 async function parseApngFrames(bytes: Uint8Array): Promise<AnimationInfo> {
 	if (typeof document === 'undefined') {
@@ -239,7 +250,6 @@ async function parseApngFrames(bytes: Uint8Array): Promise<AnimationInfo> {
 	} catch (error) {
 		console.warn('UPNG decode failed, falling back to static frame', error);
 	}
-
 
 	return await decodeApngAsStaticImage(bytes);
 }
@@ -292,10 +302,12 @@ async function decodeApngAsStaticImage(bytes: Uint8Array): Promise<AnimationInfo
 		ctx.drawImage(img, 0, 0);
 		const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-		const frames: AnimationFrame[] = [{
-			imageData,
-			delay: 100
-		}];
+		const frames: AnimationFrame[] = [
+			{
+				imageData,
+				delay: 100
+			}
+		];
 
 		return {
 			frames,

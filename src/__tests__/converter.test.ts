@@ -33,7 +33,9 @@ describe('ASCII converter', () => {
 		mockContext = {
 			drawImage: jest.fn(),
 			getImageData: jest.fn(() => ({
-				data: new Uint8ClampedArray([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 128, 128, 128, 255]),
+				data: new Uint8ClampedArray([
+					255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 128, 128, 128, 255
+				]),
 				width: 2,
 				height: 2
 			})),
@@ -105,7 +107,7 @@ describe('ASCII converter', () => {
 			mockImage.crossOrigin = 'anonymous';
 
 			setTimeout(() => {
-				// Now trigger the onload event
+				// trigger the onload event
 				if (mockImage.onload) {
 					mockImage.onload.call({} as GlobalEventHandlers, new Event('load'));
 				}
