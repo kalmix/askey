@@ -28,7 +28,7 @@
 
 askey is a SvelteKit-powered app that turns any static or animated image into high-fidelity ASCII art. Upload GIFs, APNGs, PNGs, or JPEGs, tweak pro-level tone controls, and export the result to TXT, SVG, PNG, WebP, GIF, APNG, or JSON for the `askey-player.js` runtime.
 
-You can export animations in a `json.gz` format and play it everywhere in the web with the companion `askey-player.js` or run it in the terminal using the [cli tool](#askey-cli).
+You can export animations in a `.askey` format and play it everywhere in the web with the companion `askey-player.js` or run it in the terminal using the [cli tool](#askey-cli).
 
 ## ƒ Features
 
@@ -81,7 +81,7 @@ The dev server hot-reloads when you edit files inside `src/`. Use `npm run check
 
 ## asꄗ cli (comming soon)
 
-A .NET CLI tool will be available to run ASCII animations directly in the terminal using exported `json.gz` files.
+A .NET CLI tool will be available to run ASCII animations directly in the terminal using exported `.askey` files.
 
 ## ⛃ Tech stack
 
