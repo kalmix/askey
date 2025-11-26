@@ -248,7 +248,7 @@ function convertPixelsToAscii({
 	height: number;
 	spaceDensity: number;
 }): string {
-	// Use array building for better performance (2-3x faster than string concatenation)
+	// Use array building for better performance
 	const parts: string[] = [];
 	const data = imageData.data;
 
