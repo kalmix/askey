@@ -696,7 +696,6 @@ export async function downloadAnimationJson(
 		return { ...frame, ascii: content };
 	});
 
-	// 2. Build Global Palette
 	// Sort by frequency to give single-char keys to most common colors
 	const sortedColors = [...colorCounts.entries()].sort((a, b) => b[1] - a[1]).map((e) => e[0]);
 	const colorPalette: Record<string, string> = {};
@@ -741,15 +740,10 @@ export async function downloadAnimationJson(
 		p: colorPalette, // Global palette
 		fr: optimizedFrames
 	};
-
-	// Optimization: If all delays are the same, we could theoretically store it in root,
-	// but our new format expects {c, d} in frames.
-	// To save space, if commonDelay exists, we could omit 'd' in frames and put it in 'm' or root,
-	// but let's stick to a consistent frame structure for now or use the previous logic if preferred.
-	// The previous logic had separate branches. Let's support the 'common delay' optimization.
+	
 	if (commonDelay !== null) {
 		animationData.d = commonDelay;
-		animationData.fr = optimizedFrames.map((f) => f.c); // Just strings if delay is common
+		animationData.fr = optimizedFrames.map((f) => f.c); 
 	}
 
 	const jsonString = JSON.stringify(animationData);
@@ -766,10 +760,6 @@ export async function downloadAnimationJson(
 			const compressedBlob = await new Response(compressedStream).blob();
 
 			blob = compressedBlob;
-			// Usually .json.gz, but user wants .askey.
-			// We can keep .askey and just know it's gzipped JSON.
-			// Or maybe .askey.gz? The request said "make them be .askey files".
-			// I'll assume .askey implies the compressed format.
 		} catch (error) {
 			console.warn('Compression failed, using uncompressed', error);
 			blob = new Blob([jsonString], { type: 'application/json' });
