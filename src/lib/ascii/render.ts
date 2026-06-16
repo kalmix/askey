@@ -5,29 +5,40 @@ export function buildSvgContent({
 	theme,
 	outputElementId = 'ascii-output',
 	transparentBackground = false,
-	backgroundColor
+	backgroundColor,
+	fontSize,
+	fontFamily,
+	customTintColor
 }: SvgBuildParams): { svg: string; width: number; height: number } | null {
-	const renderData = getAsciiRenderData(asciiOutput, theme, outputElementId);
+	const renderData = getAsciiRenderData(asciiOutput, theme, {
+		outputElementId,
+		fontSize,
+		fontFamily
+	});
 	if (!renderData) return null;
 
-	const { lines, charWidth, lineHeight, fontSize, fontFamily, width, height, background } =
-		renderData;
+	const { charWidth, lineHeight, width, height, background, lines } = renderData;
+	const resolvedFontSize = renderData.fontSize;
+	const resolvedFontFamily = renderData.fontFamily;
 	const fillColor = backgroundColor ?? background;
 	const shouldRenderBackground = !transparentBackground && Boolean(fillColor);
 	const backgroundRect = shouldRenderBackground
 		? `\n<rect width="${width}" height="${height}" fill="${fillColor}"/>`
 		: '';
+	const isBold = resolvedFontFamily.includes('VT323') || resolvedFontFamily.includes('Terminal');
+	const fontWeight = isBold ? 'bold' : '400';
 	let svgContent =
 		'<?xml version="1.0" encoding="UTF-8"?>\n' +
 		`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" shape-rendering="crispEdges">` +
 		backgroundRect +
 		'\n<style>\ntext {\n\tfont-family: ' +
-		`${fontFamily};\n\tfont-size: ${fontSize}px;\n\tfont-weight: 400;\n\twhite-space: pre;\n}\n</style>`;
+		`${resolvedFontFamily};\n\tfont-size: ${resolvedFontSize}px;\n\tfont-weight: ${fontWeight};\n\twhite-space: pre;\n}\n</style>`;
 
 	lines.forEach((line, row) => {
 		line.forEach((token, column) => {
 			if (!token.char || token.char === ' ') return;
-			svgContent += `\n<text x="${column * charWidth}" y="${row * lineHeight}" dominant-baseline="hanging" fill="${token.color}">${escapeForSvg(token.char)}</text>`;
+			const color = customTintColor || token.color;
+			svgContent += `\n<text x="${column * charWidth}" y="${row * lineHeight}" dominant-baseline="hanging" fill="${color}">${escapeForSvg(token.char)}</text>`;
 		});
 	});
 
@@ -38,7 +49,7 @@ export function buildSvgContent({
 function getAsciiRenderData(
 	asciiOutput: string,
 	theme: string,
-	outputElementId: string
+	options: { outputElementId?: string; fontSize?: number; fontFamily?: string } = {}
 ): AsciiRenderData | null {
 	if (!asciiOutput) return null;
 	if (typeof document === 'undefined') return null;
@@ -50,17 +61,19 @@ function getAsciiRenderData(
 	const lineCount = parsedLines.length;
 	if (maxLineLength === 0 || lineCount === 0) return null;
 
-	let fontSize = 10;
-	let fontFamily = "'Inconsolata', monospace";
+	let fontSize = options.fontSize ?? 10;
+	let fontFamily = options.fontFamily ?? "'Inconsolata', monospace";
 	let charWidth = 6;
 	let lineHeight = fontSize;
 	let background = theme === 'dark' ? '#000000' : '#f6f6f6';
 
-	const outputElement = document.getElementById(outputElementId) as HTMLElement | null;
+	const outputElement = options.outputElementId
+		? (document.getElementById(options.outputElementId) as HTMLElement | null)
+		: null;
 	if (outputElement) {
 		const computed = getComputedStyle(outputElement);
-		fontSize = parseFloat(computed.fontSize) || fontSize;
-		fontFamily = computed.fontFamily || fontFamily;
+		fontSize = options.fontSize ?? (parseFloat(computed.fontSize) || fontSize);
+		fontFamily = options.fontFamily ?? (computed.fontFamily || fontFamily);
 		const paddingX =
 			(parseFloat(computed.paddingLeft) || 0) + (parseFloat(computed.paddingRight) || 0);
 		const paddingY =
@@ -107,15 +120,31 @@ function getAsciiRenderData(
 }
 
 function parseLine(line: string, defaultColor: string): ParsedAsciiLine {
-	const temp = document.createElement('div');
-	temp.innerHTML = line;
-	const spans = temp.querySelectorAll('span');
-	if (!spans.length) return [];
-
-	return Array.from(spans).map((span) => ({
-		char: span.textContent ?? ' ',
-		color: span.style.color || defaultColor
-	}));
+	const result: ParsedAsciiLine = [];
+	let i = 0;
+	while (i < line.length) {
+		if (line.startsWith('<span style="color: ', i)) {
+			const colorStart = i + '<span style="color: '.length;
+			const colorEnd = line.indexOf('">', colorStart);
+			if (colorEnd !== -1) {
+				const color = line.substring(colorStart, colorEnd);
+				const textStart = colorEnd + 2;
+				const textEnd = line.indexOf('</span>', textStart);
+				if (textEnd !== -1) {
+					const runText = line.substring(textStart, textEnd);
+					for (let j = 0; j < runText.length; j++) {
+						result.push({ char: runText[j], color });
+					}
+					i = textEnd + '</span>'.length;
+					continue;
+				}
+			}
+		}
+		// Raw character
+		result.push({ char: line[i], color: defaultColor });
+		i++;
+	}
+	return result;
 }
 
 function escapeForSvg(text: string): string {

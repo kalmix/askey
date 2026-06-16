@@ -9,6 +9,9 @@ interface ExportOptions {
 	transparentBackground?: boolean;
 	backgroundColor?: string;
 	filename?: string;
+	fontSize?: number;
+	fontFamily?: string;
+	customTintColor?: string;
 }
 
 interface DownloadPngOptions extends ExportOptions {
@@ -86,7 +89,10 @@ export function downloadSvg(asciiOutput: string, theme: string, options: ExportO
 		theme,
 		outputElementId: options.outputElementId,
 		transparentBackground: options.transparentBackground,
-		backgroundColor: options.backgroundColor
+		backgroundColor: options.backgroundColor,
+		fontSize: options.fontSize,
+		fontFamily: options.fontFamily,
+		customTintColor: options.customTintColor
 	});
 	if (!svgData) return;
 
@@ -112,7 +118,10 @@ export function downloadPng(
 		try {
 			const rendered = renderToCanvas(asciiOutput, {
 				transparentBackground: options.transparentBackground,
-				backgroundColor: options.backgroundColor
+				backgroundColor: options.backgroundColor,
+				fontSize: options.fontSize,
+				fontFamily: options.fontFamily,
+				customTintColor: options.customTintColor
 			});
 
 			if (rendered) {
@@ -155,7 +164,10 @@ export function downloadPng(
 		theme,
 		outputElementId: options.outputElementId,
 		transparentBackground: options.transparentBackground,
-		backgroundColor: options.backgroundColor
+		backgroundColor: options.backgroundColor,
+		fontSize: options.fontSize,
+		fontFamily: options.fontFamily,
+		customTintColor: options.customTintColor
 	});
 	if (!svgData) return;
 
@@ -214,7 +226,10 @@ export function downloadWebp(
 		try {
 			const rendered = renderToCanvas(asciiOutput, {
 				transparentBackground: options.transparentBackground,
-				backgroundColor: options.backgroundColor
+				backgroundColor: options.backgroundColor,
+				fontSize: options.fontSize,
+				fontFamily: options.fontFamily,
+				customTintColor: options.customTintColor
 			});
 
 			if (rendered) {
@@ -261,7 +276,10 @@ export function downloadWebp(
 		theme,
 		outputElementId: options.outputElementId,
 		transparentBackground: options.transparentBackground,
-		backgroundColor: options.backgroundColor
+		backgroundColor: options.backgroundColor,
+		fontSize: options.fontSize,
+		fontFamily: options.fontFamily,
+		customTintColor: options.customTintColor
 	});
 	if (!svgData) return;
 
@@ -349,8 +367,8 @@ export async function downloadGif(
 	let height = 0;
 
 	// Use canvas renderer for much faster rasterization
-	const fontSize = 10;
-	const fontFamily = "'Inconsolata', monospace";
+	const fontSize = options.fontSize ?? 10;
+	const fontFamily = options.fontFamily ?? "'Inconsolata', monospace";
 
 	let reusableCanvas: OffscreenCanvas | HTMLCanvasElement;
 	if (typeof OffscreenCanvas !== 'undefined') {
@@ -368,7 +386,8 @@ export async function downloadGif(
 			fontFamily,
 			backgroundColor: options.backgroundColor,
 			transparentBackground: useTransparentBackground,
-			reuseCanvas: reusableCanvas
+			reuseCanvas: reusableCanvas,
+			customTintColor: options.customTintColor
 		});
 
 		if (!rendered) continue;
@@ -532,7 +551,10 @@ export async function downloadApng(
 			theme,
 			outputElementId: options.outputElementId,
 			transparentBackground: useTransparentBackground,
-			backgroundColor: options.backgroundColor
+			backgroundColor: options.backgroundColor,
+			fontSize: options.fontSize,
+			fontFamily: options.fontFamily,
+			customTintColor: options.customTintColor
 		});
 		if (!svgData) continue;
 
@@ -700,26 +722,22 @@ export async function downloadAnimationJson(
 	const sortedColors = [...colorCounts.entries()].sort((a, b) => b[1] - a[1]).map((e) => e[0]);
 	const colorPalette: Record<string, string> = {};
 	const colorMap = new Map<string, string>();
-	const colorLetters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-
 	sortedColors.forEach((color, index) => {
-		if (index < colorLetters.length) {
-			const key = colorLetters[index];
-			colorPalette[key] = color;
-			colorMap.set(color, key);
-		}
+		const key = index.toString();
+		colorPalette[key] = color;
+		colorMap.set(color, key);
 	});
 
 	// 3. Optimize Frames using Global Palette
 	const optimizedFrames = processedFrames.map((frame) => {
 		let content = frame.ascii;
 		content = content.replace(
-			/<span style="color: (#[0-9a-f]{6})">(.?)<\/span>/gi,
-			(match, color, char) => {
+			/<span style="color: (#[0-9a-f]{6})">([\s\S]*?)<\/span>/gi,
+			(match, color, runText) => {
 				const lowerColor = color.toLowerCase();
 				const key = colorMap.get(lowerColor);
-				// Use short key if available, otherwise full color
-				return `<s c="${key || color}">${char}</s>`;
+				const colorKey = key || color;
+				return `{${colorKey}:${runText}}`;
 			}
 		);
 		return {
@@ -730,7 +748,7 @@ export async function downloadAnimationJson(
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const animationData: Record<string, any> = {
-		v: '2.0.0', // Bump version for new format
+		v: '2.1.0', // Bump version for new format
 		n: sanitizedBase,
 		m: {
 			f: frames.length,
@@ -740,10 +758,10 @@ export async function downloadAnimationJson(
 		p: colorPalette, // Global palette
 		fr: optimizedFrames
 	};
-	
+
 	if (commonDelay !== null) {
 		animationData.d = commonDelay;
-		animationData.fr = optimizedFrames.map((f) => f.c); 
+		animationData.fr = optimizedFrames.map((f) => f.c);
 	}
 
 	const jsonString = JSON.stringify(animationData);

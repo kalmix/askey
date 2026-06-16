@@ -4,6 +4,7 @@ import UPNG from 'upng-js';
 
 import type { ConvertedAsciiFrame } from './converter';
 import { applyDithering, applyImageFilters } from './effects';
+import { rgbToRgbString } from './color-utils';
 import { ASCII_GRADIENTS, DITHERING_METHODS } from './constants';
 import {
 	WorkerMessageType,
@@ -72,7 +73,7 @@ async function handleConvertImage(request: ConvertImageRequest): Promise<void> {
 
 	try {
 		const { imageData, controls } = request.payload;
-		const { selectedGradient, spaceDensity, ditheringMethod } = controls;
+		const { selectedGradient, spaceDensity, ditheringMethod, colorQuantization = 16 } = controls;
 
 		// Apply filters
 		let processedData = applyImageFilters(imageData, controls);
@@ -80,7 +81,7 @@ async function handleConvertImage(request: ConvertImageRequest): Promise<void> {
 		// Apply dithering
 		const ditheringValue = DITHERING_METHODS[ditheringMethod];
 		if (ditheringValue && ditheringValue !== 'none') {
-			processedData = applyDithering(processedData, ditheringMethod);
+			processedData = applyDithering(processedData, ditheringMethod, controls.colorPalette);
 		}
 
 		if (isCancelled) return;
@@ -92,7 +93,8 @@ async function handleConvertImage(request: ConvertImageRequest): Promise<void> {
 			gradient,
 			width: imageData.width,
 			height: imageData.height,
-			spaceDensity
+			spaceDensity,
+			colorQuantization
 		});
 
 		if (isCancelled) return;
@@ -117,7 +119,9 @@ async function handleConvertAnimation(request: ConvertAnimationRequest): Promise
 			ditheringMethod,
 			animationFrameLimit,
 			animationFrameSkip,
-			animationPlaybackSpeed
+			animationPlaybackSpeed,
+			phosphorDecay,
+			colorQuantization = 16
 		} = controls;
 
 		const gradient = ASCII_GRADIENTS[selectedGradient];
@@ -155,6 +159,8 @@ async function handleConvertAnimation(request: ConvertAnimationRequest): Promise
 			tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
 		}
 
+		let previousData: Uint8ClampedArray | null = null;
+
 		for (let sourceIndex = 0; sourceIndex < animationInfo.frames.length; sourceIndex++) {
 			if (isCancelled) return;
 
@@ -185,8 +191,20 @@ async function handleConvertAnimation(request: ConvertAnimationRequest): Promise
 			// Apply dithering
 			const ditheringValue = DITHERING_METHODS[ditheringMethod];
 			if (ditheringValue && ditheringValue !== 'none') {
-				imageData = applyDithering(imageData, ditheringMethod);
+				imageData = applyDithering(imageData, ditheringMethod, controls.colorPalette);
 			}
+
+			// Apply Phosphor Decay
+			if (phosphorDecay && phosphorDecay > 0 && previousData) {
+				const decay = phosphorDecay / 100;
+				const data = imageData.data;
+				for (let i = 0; i < data.length; i += 4) {
+					data[i] = Math.max(data[i], previousData[i] * decay);
+					data[i + 1] = Math.max(data[i + 1], previousData[i + 1] * decay);
+					data[i + 2] = Math.max(data[i + 2], previousData[i + 2] * decay);
+				}
+			}
+			previousData = new Uint8ClampedArray(imageData.data);
 
 			// Convert to ASCII
 			const ascii = convertPixelsToAscii({
@@ -194,7 +212,8 @@ async function handleConvertAnimation(request: ConvertAnimationRequest): Promise
 				gradient,
 				width,
 				height,
-				spaceDensity
+				spaceDensity,
+				colorQuantization
 			});
 
 			const originalDelay =
@@ -227,7 +246,7 @@ async function handleConvertAnimation(request: ConvertAnimationRequest): Promise
 			imageData = applyImageFilters(imageData, controls);
 			const ditheringValue = DITHERING_METHODS[ditheringMethod];
 			if (ditheringValue && ditheringValue !== 'none') {
-				imageData = applyDithering(imageData, ditheringMethod);
+				imageData = applyDithering(imageData, ditheringMethod, controls.colorPalette);
 			}
 
 			const ascii = convertPixelsToAscii({
@@ -235,7 +254,8 @@ async function handleConvertAnimation(request: ConvertAnimationRequest): Promise
 				gradient,
 				width,
 				height,
-				spaceDensity
+				spaceDensity,
+				colorQuantization
 			});
 			asciiFrames.push({ ascii, delay: 100 });
 		}
@@ -363,13 +383,15 @@ function convertPixelsToAscii({
 	gradient,
 	width,
 	height,
-	spaceDensity
+	spaceDensity,
+	colorQuantization
 }: {
 	imageData: ImageData;
 	gradient: string;
 	width: number;
 	height: number;
 	spaceDensity: number;
+	colorQuantization: number;
 }): string {
 	// Array for building the final string
 	const parts: string[] = [];
@@ -390,6 +412,9 @@ function convertPixelsToAscii({
 	const lumB = 0.114;
 
 	for (let y = 0; y < height; y++) {
+		let currentRunColor = '';
+		let currentRunText = '';
+
 		for (let x = 0; x < width; x++) {
 			const idx = (y * width + x) * 4;
 			const r = data[idx];
@@ -407,8 +432,38 @@ function convertPixelsToAscii({
 				char = fallbackChar;
 			}
 
-			//  Now we add the color and character to the parts array
-			parts.push(`<span style="color: rgb(${r}, ${g}, ${b})">${char}</span>`);
+			if (char === ' ') {
+				if (currentRunText) {
+					parts.push(`<span style="color: ${currentRunColor}">${currentRunText}</span>`);
+					currentRunText = '';
+					currentRunColor = '';
+				}
+				parts.push(' ');
+			} else {
+				let qr = r;
+				let qg = g;
+				let qb = b;
+				if (colorQuantization > 1) {
+					const half = Math.floor(colorQuantization / 2);
+					qr = Math.min(255, Math.floor((r + half) / colorQuantization) * colorQuantization);
+					qg = Math.min(255, Math.floor((g + half) / colorQuantization) * colorQuantization);
+					qb = Math.min(255, Math.floor((b + half) / colorQuantization) * colorQuantization);
+				}
+				const colorStr = rgbToRgbString(qr, qg, qb);
+				if (colorStr === currentRunColor) {
+					currentRunText += char;
+				} else {
+					if (currentRunText) {
+						parts.push(`<span style="color: ${currentRunColor}">${currentRunText}</span>`);
+					}
+					currentRunColor = colorStr;
+					currentRunText = char;
+				}
+			}
+		}
+
+		if (currentRunText) {
+			parts.push(`<span style="color: ${currentRunColor}">${currentRunText}</span>`);
 		}
 		parts.push('\n');
 	}

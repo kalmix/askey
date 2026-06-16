@@ -3,10 +3,11 @@
 
 	import {
 		ASCII_GRADIENTS,
-		// DITHERING_METHODS,
+		DITHERING_METHODS,
 		RENDER_MODE_OPTIONS,
-		// type DitheringName,
-		type GradientName
+		type DitheringName,
+		type GradientName,
+		type PaletteName
 	} from '$lib/ascii/constants';
 
 	import ControlSection from './ControlSection.svelte';
@@ -36,6 +37,20 @@
 		animationFrameLimit = $bindable(),
 		animationFrameSkip = $bindable(),
 		animationPlaybackSpeed = $bindable(),
+		crtGlowEnabled = $bindable(false),
+		crtGlowPreset = $bindable('color'),
+		crtGlowIntensity = $bindable(3),
+		crtScanlineIntensity = $bindable(30),
+		asciiFontSize = $bindable(10),
+		asciiFontFamily = $bindable("'Inconsolata', monospace"),
+		ditheringMethod = $bindable('None'),
+		spaceDensity = $bindable(1),
+		colorPalette = $bindable('None'),
+		colorQuantization = $bindable(16),
+		interactiveHover = $bindable(false),
+		phosphorDecay = $bindable(0),
+		customTintEnabled = $bindable(false),
+		customTintColor = $bindable('#00ff00'),
 		actions,
 		onfileselect,
 		onreset
@@ -62,6 +77,20 @@
 		animationFrameLimit?: number;
 		animationFrameSkip?: number;
 		animationPlaybackSpeed?: number;
+		crtGlowEnabled?: boolean;
+		crtGlowPreset?: 'color' | 'green' | 'amber' | 'cyan';
+		crtGlowIntensity?: number;
+		crtScanlineIntensity?: number;
+		asciiFontSize?: number;
+		asciiFontFamily?: string;
+		ditheringMethod?: DitheringName;
+		spaceDensity?: number;
+		colorPalette?: 'None' | PaletteName;
+		colorQuantization?: number;
+		interactiveHover?: boolean;
+		phosphorDecay?: number;
+		customTintEnabled?: boolean;
+		customTintColor?: string;
 		actions?: Snippet;
 		onfileselect?: (file: File | null) => void;
 		onreset?: () => void;
@@ -74,10 +103,20 @@
 	let showAnimationControls = $state(false);
 
 	const gradientOptions = Object.keys(ASCII_GRADIENTS).map((key) => ({ value: key, label: key }));
-	// const ditheringOptions = Object.keys(DITHERING_METHODS).map((key) => ({
-	// 	value: key,
-	// 	label: key
-	// }));
+	const ditheringOptions = Object.keys(DITHERING_METHODS).map((key) => ({
+		value: key,
+		label: key
+	}));
+
+	const fontOptions = [
+		{ value: "'Inconsolata', monospace", label: 'Inconsolata (Default)' },
+		{ value: "'VT323', 'Terminal', monospace", label: 'Terminal (Windows XP CMD)' },
+		{ value: "'Fixedsys Excelsior', 'Fixedsys', monospace", label: 'Fixedsys (Retro Windows)' },
+		{ value: "'Lucida Console', monospace", label: 'Lucida Console' },
+		{ value: "'Courier New', Courier, monospace", label: 'Courier New' },
+		{ value: "Consolas, 'Courier New', monospace", label: 'Consolas' },
+		{ value: 'monospace', label: 'System Monospace' }
+	];
 
 	let renderMode = $state(useCanvasRenderer ? 'canvas' : 'dom');
 
@@ -225,6 +264,59 @@
 					bind:value={invertColors}
 					format={(val) => `${val}%`}
 				/>
+				<SelectControl
+					id="palette-select"
+					label="Retro Palette"
+					bind:value={colorPalette}
+					options={[
+						{ value: 'None', label: 'None' },
+						{ value: 'c64', label: 'Commodore 64' },
+						{ value: 'gameboy', label: 'Game Boy' },
+						{ value: 'cga', label: 'CGA' },
+						{ value: 'nes', label: 'NES' },
+						{ value: 'pico8', label: 'PICO-8' }
+					]}
+				/>
+				<SliderControl
+					id="quantization-control"
+					label="Color Quantization"
+					min={1}
+					max={64}
+					step={1}
+					bind:value={colorQuantization}
+					format={(val) => (val === 1 ? 'None (Full Color)' : `Step ${val}`)}
+				/>
+				<div
+					class="control-row-full font-divider"
+					style="margin-top: 1rem; border-top: 1px dashed var(--border-color); padding-top: 1rem;"
+				>
+					<label class="control-toggle">
+						<span class="control-label">Custom Color Tint</span>
+						<input type="checkbox" bind:checked={customTintEnabled} />
+					</label>
+				</div>
+				{#if customTintEnabled}
+					<div
+						class="control-row"
+						style="display: flex; align-items: center; justify-content: space-between; margin-top: 0.75rem;"
+					>
+						<span class="control-label">Tint Color</span>
+						<div
+							class="color-picker-wrapper"
+							style="display: flex; align-items: center; gap: 0.5rem;"
+						>
+							<span
+								style="font-family: 'Inconsolata', monospace; font-size: 0.85rem; text-transform: uppercase; color: var(--text-secondary);"
+								>{customTintColor}</span
+							>
+							<input
+								type="color"
+								bind:value={customTintColor}
+								style="cursor: pointer; width: 28px; height: 28px; border: 1px solid var(--border-color); border-radius: 4px; background: none; padding: 0;"
+							/>
+						</div>
+					</div>
+				{/if}
 			</ControlSection>
 
 			<ControlSection title="Effects" bind:isOpen={showEffectsControls}>
@@ -251,6 +343,59 @@
 					max={255}
 					bind:value={thresholding}
 				/>
+
+				<div
+					class="control-row-full font-divider"
+					style="margin-top: 1rem; border-top: 1px dashed var(--border-color); padding-top: 1rem;"
+				>
+					<label class="control-toggle">
+						<span class="control-label">Enable CRT Glow</span>
+						<input type="checkbox" bind:checked={crtGlowEnabled} />
+					</label>
+				</div>
+
+				{#if crtGlowEnabled}
+					<SelectControl
+						id="crt-preset-select"
+						label="CRT Color Preset"
+						bind:value={crtGlowPreset}
+						options={[
+							{ value: 'color', label: 'Color CRT (Original)' },
+							{ value: 'green', label: 'Green Phosphor' },
+							{ value: 'amber', label: 'Amber Terminal' },
+							{ value: 'cyan', label: 'Cyberpunk Cyan' }
+						]}
+					/>
+
+					<SliderControl
+						id="crt-glow-intensity"
+						label="Glow Intensity"
+						min={1}
+						max={5}
+						step={0.5}
+						bind:value={crtGlowIntensity}
+						format={(val) => `${val.toFixed(1)}`}
+					/>
+
+					<SliderControl
+						id="crt-scanline-intensity"
+						label="Scanline Intensity"
+						min={0}
+						max={100}
+						bind:value={crtScanlineIntensity}
+						format={(val) => `${val}%`}
+					/>
+				{/if}
+
+				<div
+					class="control-row-full font-divider"
+					style="margin-top: 1rem; border-top: 1px dashed var(--border-color); padding-top: 1rem;"
+				>
+					<label class="control-toggle">
+						<span class="control-label">Experimental Mouse Hover</span>
+						<input type="checkbox" bind:checked={interactiveHover} />
+					</label>
+				</div>
 			</ControlSection>
 
 			{#if isAnimatedImage}
@@ -259,7 +404,7 @@
 						id="animation-frame-limit"
 						label="Frame limit"
 						min={2}
-						max={400}
+						max={500}
 						step={1}
 						bind:value={animationFrameLimit}
 					/>
@@ -281,6 +426,15 @@
 						bind:value={animationPlaybackSpeed}
 						format={(val) => `${val.toFixed(2)}x`}
 					/>
+					<SliderControl
+						id="phosphor-decay"
+						label="Phosphor Decay"
+						min={0}
+						max={95}
+						step={5}
+						bind:value={phosphorDecay}
+						format={(val) => (val === 0 ? 'Off' : `${val}%`)}
+					/>
 				</ControlSection>
 			{/if}
 
@@ -291,8 +445,22 @@
 					bind:value={renderMode}
 					options={RENDER_MODE_OPTIONS}
 				/>
-				<!-- ! TODO: Implement these controls -->
-				<!-- <SliderControl
+				<SelectControl
+					id="font-family-select"
+					label="Font Type"
+					bind:value={asciiFontFamily}
+					options={fontOptions}
+				/>
+				<SliderControl
+					id="font-size-control"
+					label="Font Size"
+					min={6}
+					max={24}
+					step={1}
+					bind:value={asciiFontSize}
+					format={(val) => `${val}px`}
+				/>
+				<SliderControl
 					id="space-density-control"
 					label="Space Density"
 					min={0}
@@ -306,7 +474,7 @@
 					label="Dithering Method"
 					bind:value={ditheringMethod}
 					options={ditheringOptions}
-				/> -->
+				/>
 			</ControlSection>
 		</div>
 
@@ -499,6 +667,46 @@
 			display: grid;
 			grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 			gap: 0.75rem;
+		}
+	}
+
+	.control-row-full {
+		width: 100%;
+		display: block;
+	}
+
+	.control-toggle {
+		display: grid;
+		grid-template-columns: minmax(0, 140px) minmax(0, 1fr);
+		align-items: center;
+		gap: 1rem;
+		width: 100%;
+		min-width: 0;
+		cursor: pointer;
+	}
+
+	.control-toggle .control-label {
+		font-size: 0.875rem;
+		font-weight: 500;
+		color: var(--text-primary);
+	}
+
+	.control-toggle input {
+		margin: 0;
+		accent-color: var(--gray-600);
+		cursor: pointer;
+		width: 1.15rem;
+		height: 1.15rem;
+		justify-self: start;
+	}
+
+	@media (max-width: 768px) {
+		.control-toggle {
+			grid-template-columns: 1fr auto;
+			gap: 0.5rem;
+		}
+		.control-toggle input {
+			justify-self: end;
 		}
 	}
 </style>

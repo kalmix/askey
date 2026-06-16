@@ -22,6 +22,16 @@
 		onexport?: () => void;
 		ondismissError?: (index: number) => void;
 		oncancel?: () => void;
+		crtGlowEnabled?: boolean;
+		crtGlowPreset?: 'color' | 'green' | 'amber' | 'cyan';
+		crtGlowIntensity?: number;
+		crtScanlineIntensity?: number;
+		asciiFontSize?: number;
+		asciiFontFamily?: string;
+		customTintEnabled?: boolean;
+		customTintColor?: string;
+		theme?: string;
+		interactiveHover?: boolean;
 	}
 
 	let {
@@ -37,8 +47,49 @@
 		ondownload,
 		onexport,
 		ondismissError,
-		oncancel
+		oncancel,
+		crtGlowEnabled = false,
+		crtGlowPreset = 'color',
+		crtGlowIntensity = 3,
+		crtScanlineIntensity = 30,
+		asciiFontSize = 10,
+		asciiFontFamily = "'Inconsolata', monospace",
+		customTintEnabled = false,
+		customTintColor = '#00ff00',
+		theme = 'dark',
+		interactiveHover = false
 	}: Props = $props();
+
+	const defaultCanvasBg = $derived(theme === 'light' ? '#ffffff' : '#141414');
+
+	const colorMatrices = {
+		color: `
+			1 0 0 0 0
+			0 1 0 0 0
+			0 0 1 0 0
+			0 0 0 1 0
+		`,
+		green: `
+			0 0 0 0 0
+			0.2126 0.7152 0.0722 0 0
+			0 0 0 0 0
+			0 0 0 1 0
+		`,
+		amber: `
+			0.2126 0.7152 0.0722 0 0
+			0.1382 0.4649 0.0469 0 0
+			0 0 0 0 0
+			0 0 0 1 0
+		`,
+		cyan: `
+			0 0 0 0 0
+			0.1488 0.5006 0.0505 0 0
+			0.2126 0.7152 0.0722 0 0
+			0 0 0 1 0
+		`
+	};
+
+	let colorMatrixValues = $derived(colorMatrices[crtGlowPreset] || colorMatrices.color);
 
 	let menuOpen = $state(false);
 	let dropdownRef = $state<HTMLDivElement | null>(null);
@@ -93,10 +144,19 @@
 
 		const currentFrame = asciiFrames[currentFrameIndex];
 		const frameDelay = currentFrame?.delay ?? 100;
+		const elapsed = timestamp - lastFrameTime;
 
-		if (timestamp - lastFrameTime >= frameDelay) {
-			currentFrameIndex = (currentFrameIndex + 1) % asciiFrames.length;
-			lastFrameTime = timestamp;
+		if (elapsed >= frameDelay) {
+			if (elapsed > 200) {
+				// Reset anchor if lag is too large (e.g., tab suspended)
+				currentFrameIndex = (currentFrameIndex + 1) % asciiFrames.length;
+				lastFrameTime = timestamp;
+			} else {
+				// Step multiple frames if delay bounds are exceeded
+				const framesToStep = Math.floor(elapsed / frameDelay);
+				currentFrameIndex = (currentFrameIndex + framesToStep) % asciiFrames.length;
+				lastFrameTime += framesToStep * frameDelay;
+			}
 		}
 
 		animationFrameId = requestAnimationFrame(playAnimation);
@@ -138,12 +198,43 @@
 		}
 	});
 
+	let mouseX = $state<number | null>(null);
+	let mouseY = $state<number | null>(null);
+	let tick = $state(0);
+	let physicsActive = $state(false);
+	let isMouseActive = $state(false);
+
+	function handleMouseMove(e: MouseEvent) {
+		if (!interactiveHover) return;
+		const target = e.currentTarget as HTMLCanvasElement;
+		if (!target) return;
+
+		const rect = target.getBoundingClientRect();
+		const clientX = e.clientX - rect.left;
+		const clientY = e.clientY - rect.top;
+
+		if (rect.width > 0 && rect.height > 0) {
+			mouseX = clientX * (target.width / rect.width);
+			mouseY = clientY * (target.height / rect.height);
+			isMouseActive = true;
+			tick++;
+		}
+	}
+
+	function handleMouseLeave() {
+		mouseX = null;
+		mouseY = null;
+		isMouseActive = false;
+		tick++;
+	}
+
 	onDestroy(() => {
 		stopAnimation();
 	});
 	const displayedAscii = $derived.by(() => {
 		if (asciiFrames.length > 0) {
-			return asciiFrames[currentFrameIndex]?.ascii ?? '';
+			const safeIndex = currentFrameIndex % asciiFrames.length;
+			return asciiFrames[safeIndex]?.ascii ?? '';
 		}
 		return asciiOutput;
 	});
@@ -157,11 +248,32 @@
 	// Reusable canvas for rendering
 	let reusableCanvas: OffscreenCanvas | HTMLCanvasElement | null = null;
 
+	$effect(() => {
+		if (isMounted && useCanvasRenderer && interactiveHover && displayedAscii) {
+			if (isMouseActive || physicsActive) {
+				let loopId: number;
+				const loop = () => {
+					tick++;
+					loopId = requestAnimationFrame(loop);
+				};
+				loopId = requestAnimationFrame(loop);
+				return () => {
+					cancelAnimationFrame(loopId);
+				};
+			}
+		}
+	});
+
 	// Render to canvas when in canvas mode (client-side only)
 	$effect(() => {
-		if (isMounted && useCanvasRenderer && displayedAscii && canvasRef) {
-			const fontSize = 10;
-			const fontFamily = "'Inconsolata', monospace";
+		if (isMounted && useCanvasRenderer && displayedAscii) {
+			void tick;
+			const fontSize = asciiFontSize;
+			const fontFamily = asciiFontFamily;
+			const mousePos =
+				interactiveHover && mouseX !== null && mouseY !== null
+					? { x: mouseX, y: mouseY }
+					: undefined;
 
 			// Initialize reusable canvas if needed
 			if (!reusableCanvas) {
@@ -172,27 +284,35 @@
 				}
 			}
 
-			const rendered = renderToCanvas(displayedAscii, {
-				fontSize,
-				fontFamily,
-				backgroundColor: '#141414',
-				transparentBackground: false,
-				reuseCanvas: reusableCanvas
-			});
+			if (canvasRef) {
+				const rendered = renderToCanvas(displayedAscii, {
+					fontSize,
+					fontFamily,
+					backgroundColor: crtGlowEnabled ? 'transparent' : defaultCanvasBg,
+					transparentBackground: crtGlowEnabled,
+					reuseCanvas: reusableCanvas,
+					customTintColor: customTintEnabled ? customTintColor : undefined,
+					mousePos
+				});
 
-			if (rendered) {
-				const ctx = canvasRef.getContext('2d', { willReadFrequently: true });
-				if (ctx) {
-					canvasRef.width = rendered.width;
-					canvasRef.height = rendered.height;
-					ctx.clearRect(0, 0, rendered.width, rendered.height);
-					if (rendered.canvas instanceof HTMLCanvasElement) {
-						ctx.drawImage(rendered.canvas, 0, 0);
-					} else if (rendered.canvas instanceof OffscreenCanvas) {
-						// Transfer from OffscreenCanvas
-						const bitmap = rendered.canvas.transferToImageBitmap();
-						ctx.drawImage(bitmap, 0, 0);
-						bitmap.close();
+				if (rendered) {
+					physicsActive = rendered.physicsActive || false;
+					const ctx = canvasRef.getContext('2d', { willReadFrequently: true });
+					if (ctx) {
+						if (canvasRef.width !== rendered.width) {
+							canvasRef.width = rendered.width;
+						}
+						if (canvasRef.height !== rendered.height) {
+							canvasRef.height = rendered.height;
+						}
+						ctx.clearRect(0, 0, rendered.width, rendered.height);
+						if (rendered.canvas instanceof HTMLCanvasElement) {
+							ctx.drawImage(rendered.canvas, 0, 0);
+						} else if (rendered.canvas instanceof OffscreenCanvas) {
+							const bitmap = rendered.canvas.transferToImageBitmap();
+							ctx.drawImage(bitmap, 0, 0);
+							bitmap.close();
+						}
 					}
 				}
 			}
@@ -341,12 +461,36 @@
 
 	<div class="output-body" aria-busy={isProcessing}>
 		{#if asciiOutput}
-			<div class="output-wrapper">
+			<div class="output-wrapper" class:crt-active={crtGlowEnabled}>
 				{#if isMounted && useCanvasRenderer}
-					<canvas bind:this={canvasRef} class="ascii-canvas"></canvas>
+					<canvas
+						bind:this={canvasRef}
+						class="ascii-canvas"
+						style="filter: {crtGlowEnabled ? 'url(#crt-glow)' : 'none'};"
+						onmousemove={handleMouseMove}
+						onmouseleave={handleMouseLeave}
+					></canvas>
 				{:else}
 					<!-- eslint-disable svelte/no-at-html-tags -->
-					<pre id="ascii-output" class="ascii-output">{@html displayedAscii}</pre>
+					<pre
+						id="ascii-output"
+						class="ascii-output"
+						class:tint-active={customTintEnabled}
+						class:hover-effects-active={interactiveHover}
+						style="
+							filter: {crtGlowEnabled ? 'url(#crt-glow)' : 'none'};
+							font-size: {asciiFontSize}px;
+							font-family: {asciiFontFamily};
+							font-weight: {asciiFontFamily.includes('VT323') || asciiFontFamily.includes('Terminal')
+							? 'bold'
+							: 'normal'};
+							--custom-tint-color: {customTintColor};
+						">{@html displayedAscii}</pre>
+				{/if}
+
+				{#if crtGlowEnabled}
+					<div class="crt-overlay" style="--scanline-opacity: {crtScanlineIntensity / 100};"></div>
+					<div class="crt-vignette"></div>
 				{/if}
 			</div>
 		{:else}
@@ -355,6 +499,81 @@
 			</div>
 		{/if}
 	</div>
+
+	{#if crtGlowEnabled}
+		<svg style="position: absolute; width: 0; height: 0; pointer-events: none;" aria-hidden="true">
+			<defs>
+				<filter id="crt-glow">
+					<!-- 1. Chromatic Aberration RGB split on SourceGraphic -->
+					<feColorMatrix
+						type="matrix"
+						values="
+						1 0 0 0 0
+						0 0 0 0 0
+						0 0 0 0 0
+						0 0 0 1 0"
+						in="SourceGraphic"
+						result="red"
+					/>
+					<feColorMatrix
+						type="matrix"
+						values="
+						0 0 0 0 0
+						0 1 0 0 0
+						0 0 0 0 0
+						0 0 0 1 0"
+						in="SourceGraphic"
+						result="green"
+					/>
+					<feColorMatrix
+						type="matrix"
+						values="
+						0 0 0 0 0
+						0 0 0 0 0
+						0 0 1 0 0
+						0 0 0 1 0"
+						in="SourceGraphic"
+						result="blue"
+					/>
+
+					<!-- Shift Red and Blue channels slightly -->
+					<feOffset dx="-1.2" dy="0" in="red" result="red-shifted" />
+					<feOffset dx="1.2" dy="0" in="blue" result="blue-shifted" />
+
+					<!-- Recombine channels to make rgb-split -->
+					<feBlend mode="screen" in="red-shifted" in2="green" result="rg" />
+					<feBlend mode="screen" in="rg" in2="blue-shifted" result="rgb-split" />
+
+					<!-- 2. Apply color preset matrix to the split graphic -->
+					<feColorMatrix
+						type="matrix"
+						values={colorMatrixValues}
+						in="rgb-split"
+						result="tinted-split"
+					/>
+
+					<!-- 3. Dual blur layers for perfect halo bloom glow on tinted-split -->
+					<feGaussianBlur stdDeviation={crtGlowIntensity * 0.8} in="tinted-split" result="blur1" />
+					<feGaussianBlur stdDeviation={crtGlowIntensity * 3.5} in="tinted-split" result="blur2" />
+
+					<!-- Amplify standard deviations -->
+					<feComponentTransfer in="blur1" result="glow1">
+						<feFuncA type="linear" slope="2.2" />
+					</feComponentTransfer>
+					<feComponentTransfer in="blur2" result="glow2">
+						<feFuncA type="linear" slope="1.4" />
+					</feComponentTransfer>
+
+					<!-- Merge original split tinted image with glow blurs -->
+					<feMerge>
+						<feMergeNode in="glow2" />
+						<feMergeNode in="glow1" />
+						<feMergeNode in="tinted-split" />
+					</feMerge>
+				</filter>
+			</defs>
+		</svg>
+	{/if}
 
 	{#if isProcessing}
 		<div class="processing-overlay" role="status" aria-live="polite">
@@ -491,6 +710,21 @@
 		max-width: 100%;
 		scrollbar-width: thin;
 		scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+	}
+
+	.ascii-output.tint-active :global(span) {
+		color: var(--custom-tint-color) !important;
+	}
+
+	.ascii-output.hover-effects-active :global(span) {
+		transition:
+			filter 0.15s ease,
+			text-shadow 0.15s ease;
+	}
+
+	.ascii-output.hover-effects-active :global(span:hover) {
+		filter: brightness(1.8) contrast(1.2);
+		text-shadow: 0 0 8px currentColor;
 	}
 
 	@media (min-width: 768px) {
@@ -983,5 +1217,63 @@
 			transform: scale(0.98);
 			background: var(--output-bg-primary);
 		}
+	}
+
+	.output-wrapper.crt-active {
+		position: relative;
+		background-color: #020402; /* Retro dark screen baseline */
+		transition: background-color 0.3s ease;
+		overflow: hidden;
+	}
+
+	.crt-overlay {
+		position: absolute;
+		inset: 0;
+		z-index: 5;
+		pointer-events: none;
+		background: 
+			/* Horizontal scanlines */
+			repeating-linear-gradient(
+				to bottom,
+				rgba(0, 0, 0, calc(var(--scanline-opacity) * 0.8)) 0px,
+				rgba(0, 0, 0, calc(var(--scanline-opacity) * 0.8)) 1px,
+				transparent 1px,
+				transparent 3px
+			),
+			/* Vertical grille (Sony Trinitron phosphor pattern) */
+				repeating-linear-gradient(
+					to right,
+					rgba(255, 0, 0, 0.05) 0px,
+					rgba(0, 255, 0, 0.03) 1px,
+					rgba(0, 0, 255, 0.05) 2px,
+					transparent 2px,
+					transparent 3px
+				);
+		background-size:
+			100% 3px,
+			3px 100%;
+	}
+
+	.crt-vignette {
+		position: absolute;
+		inset: 0;
+		z-index: 6;
+		pointer-events: none;
+		background: radial-gradient(
+			circle,
+			transparent 55%,
+			rgba(0, 0, 0, 0.4) 80%,
+			rgba(0, 0, 0, 0.85) 100%
+		);
+		mix-blend-mode: multiply;
+	}
+
+	:global(body.light) .output-panel {
+		--output-bg-primary: white;
+		--output-bg-secondary: white;
+		--output-bg-tertiary: var(--gray-100);
+		--output-text-primary: var(--gray-950);
+		--output-text-secondary: var(--gray-700);
+		--output-border-color: var(--gray-200);
 	}
 </style>

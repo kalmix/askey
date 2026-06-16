@@ -40,6 +40,9 @@ describe('Asset Conversion Tests', () => {
 				});
 
 				if (isCorrupt) {
+					// In JSDOM, image decoding is not fully simulated, so loading corrupt base64 data URLs
+					// may succeed instead of throwing. We verify the result is a string in this case.
+					expect(typeof result).toBe('string');
 				} else {
 					expect(result).toBeTruthy();
 					expect(typeof result).toBe('string');

@@ -24,6 +24,20 @@ HTMLCanvasElement.prototype.getContext = jest.fn((type) => {
 	return null;
 });
 
+global.ImageData = class ImageData {
+	constructor(dataOrWidth, widthOrHeight, height) {
+		if (dataOrWidth instanceof Uint8ClampedArray) {
+			this.data = dataOrWidth;
+			this.width = widthOrHeight;
+			this.height = height;
+		} else {
+			this.width = dataOrWidth;
+			this.height = widthOrHeight;
+			this.data = new Uint8ClampedArray(this.width * this.height * 4);
+		}
+	}
+};
+
 global.Image = class MockImage {
 	constructor() {
 		this.crossOrigin = '';

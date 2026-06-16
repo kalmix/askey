@@ -62,6 +62,14 @@
 	let wasmErrors = $state<WasmError[]>([]);
 	let currentExportAbortController: AbortController | null = null;
 
+	let crtGlowEnabled = $state(false);
+	let crtGlowPreset = $state<'color' | 'green' | 'amber' | 'cyan'>('color');
+	let crtGlowIntensity = $state(3);
+	let crtScanlineIntensity = $state(30);
+
+	let asciiFontSize = $state(10);
+	let asciiFontFamily = $state("'Inconsolata', monospace");
+
 	let characters = $state(DEFAULT_CONTROLS.characters);
 	let brightness = $state(DEFAULT_CONTROLS.brightness);
 	let contrast = $state(DEFAULT_CONTROLS.contrast);
@@ -79,6 +87,12 @@
 	let animationFrameLimit = $state(DEFAULT_CONTROLS.animationFrameLimit);
 	let animationFrameSkip = $state(DEFAULT_CONTROLS.animationFrameSkip);
 	let animationPlaybackSpeed = $state(DEFAULT_CONTROLS.animationPlaybackSpeed);
+	let colorPalette = $state(DEFAULT_CONTROLS.colorPalette);
+	let colorQuantization = $state(DEFAULT_CONTROLS.colorQuantization);
+	let interactiveHover = $state(DEFAULT_CONTROLS.interactiveHover);
+	let phosphorDecay = $state(DEFAULT_CONTROLS.phosphorDecay);
+	let customTintEnabled = $state(false);
+	let customTintColor = $state('#00ff00');
 
 	const isDifferent = (current: number, initial: number) =>
 		Math.abs(current - initial) > FLOAT_TOLERANCE;
@@ -100,6 +114,11 @@
 				isDifferent(spaceDensity, DEFAULT_CONTROLS.spaceDensity) ||
 				selectedGradient !== DEFAULT_CONTROLS.selectedGradient ||
 				ditheringMethod !== DEFAULT_CONTROLS.ditheringMethod ||
+				colorPalette !== DEFAULT_CONTROLS.colorPalette ||
+				isDifferent(colorQuantization, DEFAULT_CONTROLS.colorQuantization) ||
+				interactiveHover !== DEFAULT_CONTROLS.interactiveHover ||
+				isDifferent(phosphorDecay, DEFAULT_CONTROLS.phosphorDecay) ||
+				customTintEnabled ||
 				isDifferent(animationFrameLimit, DEFAULT_CONTROLS.animationFrameLimit) ||
 				isDifferent(animationFrameSkip, DEFAULT_CONTROLS.animationFrameSkip) ||
 				isDifferent(animationPlaybackSpeed, DEFAULT_CONTROLS.animationPlaybackSpeed))
@@ -121,6 +140,10 @@
 			spaceDensity,
 			selectedGradient,
 			ditheringMethod,
+			colorPalette,
+			colorQuantization,
+			interactiveHover,
+			phosphorDecay,
 			animationFrameLimit,
 			animationFrameSkip,
 			animationPlaybackSpeed
@@ -146,6 +169,11 @@
 		const storedTheme = (localStorage.getItem(THEME_STORAGE_KEY) as Theme | null) ?? 'dark';
 		theme = storedTheme;
 		applyTheme(storedTheme);
+		if (storedTheme === 'light') {
+			customTintEnabled = true;
+			customTintColor = '#000000';
+			exportBgHex = '#ffffff';
+		}
 		console.clear(); // shhhhhh
 		console.log('Hello Fellow Dev! ಠ‿↼');
 	});
@@ -161,6 +189,16 @@
 		applyTheme(theme);
 		if (typeof localStorage !== 'undefined') {
 			localStorage.setItem(THEME_STORAGE_KEY, theme);
+		}
+
+		if (theme === 'light') {
+			customTintEnabled = true;
+			customTintColor = '#000000';
+			exportBgHex = '#ffffff';
+		} else {
+			customTintEnabled = false;
+			customTintColor = '#00ff00';
+			exportBgHex = '#000000';
 		}
 	}
 
@@ -312,6 +350,10 @@
 		void animationFrameSkip;
 		void animationPlaybackSpeed;
 		void isAnimationDetectionPending;
+		void colorPalette;
+		void phosphorDecay;
+		void customTintEnabled;
+		void customTintColor;
 		runConversion();
 	});
 
@@ -328,7 +370,10 @@
 		if (!asciiOutput) return;
 		downloadSvg(asciiOutput, theme, {
 			transparentBackground: exportTransparent,
-			filename: imageName
+			filename: imageName,
+			fontSize: asciiFontSize,
+			fontFamily: asciiFontFamily,
+			customTintColor: customTintEnabled ? customTintColor : undefined
 		});
 	}
 
@@ -340,7 +385,10 @@
 			transparentBackground,
 			backgroundColor,
 			filename: imageName,
-			useCanvasRenderer
+			useCanvasRenderer,
+			fontSize: asciiFontSize,
+			fontFamily: asciiFontFamily,
+			customTintColor: customTintEnabled ? customTintColor : undefined
 		});
 	}
 
@@ -352,7 +400,10 @@
 			transparentBackground,
 			backgroundColor,
 			filename: imageName,
-			useCanvasRenderer
+			useCanvasRenderer,
+			fontSize: asciiFontSize,
+			fontFamily: asciiFontFamily,
+			customTintColor: customTintEnabled ? customTintColor : undefined
 		});
 	}
 
@@ -376,12 +427,15 @@
 				backgroundColor,
 				filename: imageName,
 				useCanvasRenderer,
+				fontSize: asciiFontSize,
+				fontFamily: asciiFontFamily,
 				onProgress: (p) => (exportProgress = p),
 				onError: (error: WasmError) => {
 					// Add WASM error to the list
 					wasmErrors = [...wasmErrors, error];
 				},
-				signal
+				signal,
+				customTintColor: customTintEnabled ? customTintColor : undefined
 			});
 		} catch (error) {
 			// Don't show error if it was cancelled
@@ -419,12 +473,15 @@
 				backgroundColor,
 				filename: imageName,
 				useCanvasRenderer,
+				fontSize: asciiFontSize,
+				fontFamily: asciiFontFamily,
 				onProgress: (p) => (exportProgress = p),
 				onError: (error: WasmError) => {
 					// Add WASM error to the list
 					wasmErrors = [...wasmErrors, error];
 				},
-				signal
+				signal,
+				customTintColor: customTintEnabled ? customTintColor : undefined
 			});
 		} catch (error) {
 			if (error instanceof Error && error.message === 'Conversion cancelled') {
@@ -505,9 +562,21 @@
 		spaceDensity = DEFAULT_CONTROLS.spaceDensity;
 		selectedGradient = DEFAULT_CONTROLS.selectedGradient;
 		ditheringMethod = DEFAULT_CONTROLS.ditheringMethod;
+		colorPalette = DEFAULT_CONTROLS.colorPalette;
+		colorQuantization = DEFAULT_CONTROLS.colorQuantization;
+		interactiveHover = DEFAULT_CONTROLS.interactiveHover;
+		phosphorDecay = DEFAULT_CONTROLS.phosphorDecay;
+		customTintEnabled = false;
+		customTintColor = '#00ff00';
 		animationFrameLimit = DEFAULT_CONTROLS.animationFrameLimit;
 		animationFrameSkip = DEFAULT_CONTROLS.animationFrameSkip;
 		animationPlaybackSpeed = DEFAULT_CONTROLS.animationPlaybackSpeed;
+		crtGlowEnabled = false;
+		crtGlowPreset = 'color';
+		crtGlowIntensity = 3;
+		crtScanlineIntensity = 30;
+		asciiFontSize = 10;
+		asciiFontFamily = "'Inconsolata', monospace";
 	}
 
 	function isFileDrag(event: DragEvent) {
@@ -592,9 +661,6 @@
 	{/if}
 
 	<div class="main-content">
-		<!-- For later I need to read more about dithering -->
-		<!-- bind:ditheringMethod -->
-		<!-- bind:spaceDensity -->
 		<ControlsPanel
 			{hasImage}
 			{hasAdjustments}
@@ -618,6 +684,20 @@
 			bind:animationFrameLimit
 			bind:animationFrameSkip
 			bind:animationPlaybackSpeed
+			bind:crtGlowEnabled
+			bind:crtGlowPreset
+			bind:crtGlowIntensity
+			bind:crtScanlineIntensity
+			bind:asciiFontSize
+			bind:asciiFontFamily
+			bind:ditheringMethod
+			bind:spaceDensity
+			bind:colorPalette
+			bind:colorQuantization
+			bind:interactiveHover
+			bind:phosphorDecay
+			bind:customTintEnabled
+			bind:customTintColor
 			onfileselect={(file) => handleFileSelection(file)}
 			onreset={resetControls}
 		>
@@ -680,6 +760,16 @@
 			onexport={handleExportAnimation}
 			ondismissError={handleDismissError}
 			oncancel={handleCancelExport}
+			{crtGlowEnabled}
+			{crtGlowPreset}
+			{crtGlowIntensity}
+			{crtScanlineIntensity}
+			{asciiFontSize}
+			{asciiFontFamily}
+			{interactiveHover}
+			{customTintEnabled}
+			{customTintColor}
+			{theme}
 		/>
 	</div>
 

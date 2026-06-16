@@ -86,7 +86,9 @@ async function convertImageWithWorker(
 			edgeDetection: controls.edgeDetection,
 			spaceDensity: controls.spaceDensity,
 			selectedGradient: controls.selectedGradient,
-			ditheringMethod: controls.ditheringMethod
+			ditheringMethod: controls.ditheringMethod,
+			colorPalette: controls.colorPalette,
+			phosphorDecay: controls.phosphorDecay
 		});
 
 		return { asciiOutput: ascii, asciiFrames: [] };

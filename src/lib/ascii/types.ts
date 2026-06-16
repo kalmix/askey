@@ -1,4 +1,4 @@
-import type { DitheringName, GradientName } from './constants';
+import type { DitheringName, GradientName, PaletteName } from './constants';
 
 export interface ParsedAsciiToken {
 	char: string;
@@ -33,6 +33,10 @@ export interface AsciiControlValues {
 	spaceDensity: number;
 	selectedGradient: GradientName;
 	ditheringMethod: DitheringName;
+	colorPalette?: 'None' | PaletteName;
+	colorQuantization?: number;
+	interactiveHover?: boolean;
+	phosphorDecay?: number;
 }
 
 export interface SvgBuildParams {
@@ -41,4 +45,7 @@ export interface SvgBuildParams {
 	outputElementId?: string;
 	transparentBackground?: boolean;
 	backgroundColor?: string;
+	fontSize?: number;
+	fontFamily?: string;
+	customTintColor?: string;
 }

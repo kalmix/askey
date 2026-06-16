@@ -1,4 +1,5 @@
-import type { DitheringName } from './constants';
+import type { DitheringName, PaletteName } from './constants';
+import { RETRO_PALETTES } from './constants';
 import { hslToRgb, rgbToHsl } from './color';
 
 export interface FilterOptions {
@@ -13,6 +14,7 @@ export interface FilterOptions {
 	sharpness: number;
 	edgeDetection: number;
 	ditheringMethod: DitheringName;
+	colorPalette?: 'None' | PaletteName;
 }
 
 export function applyImageFilters(imageData: ImageData, options: FilterOptions): ImageData {
@@ -26,9 +28,15 @@ export function applyImageFilters(imageData: ImageData, options: FilterOptions):
 		invertColors,
 		thresholding,
 		sharpness,
-		edgeDetection
+		edgeDetection,
+		colorPalette
 	} = options;
-	const data = imageData.data;
+
+	let processed = new ImageData(
+		new Uint8ClampedArray(imageData.data),
+		imageData.width,
+		imageData.height
+	);
 
 	// Pre-calculate filter factors to avoid repeated division
 	const applyBrightness = brightness !== 100;
@@ -59,6 +67,8 @@ export function applyImageFilters(imageData: ImageData, options: FilterOptions):
 	const grayR = 0.299;
 	const grayG = 0.587;
 	const grayB = 0.114;
+
+	const data = processed.data;
 
 	// Loop through each pixel
 	for (let i = 0; i < data.length; i += 4) {
@@ -123,8 +133,6 @@ export function applyImageFilters(imageData: ImageData, options: FilterOptions):
 		data[i + 2] = clampColor(b);
 	}
 
-	let processed = imageData;
-
 	if (sharpness !== 0) {
 		processed = applySharpness(processed, sharpness);
 	}
@@ -137,28 +145,79 @@ export function applyImageFilters(imageData: ImageData, options: FilterOptions):
 		processed = applyThreshold(processed, thresholding);
 	}
 
+	if (options.ditheringMethod !== 'None') {
+		processed = applyDithering(processed, options.ditheringMethod, colorPalette);
+	} else if (colorPalette && colorPalette !== 'None') {
+		processed = applyColorPalette(processed, colorPalette);
+	}
+
 	return processed;
 }
 
-// !TODO: Implement dithering methods
-export function applyDithering(imageData: ImageData, method: DitheringName): ImageData {
+function findNearestColor(
+	r: number,
+	g: number,
+	b: number,
+	palette: ReadonlyArray<{ r: number; g: number; b: number }>
+) {
+	let minDist = Infinity;
+	let nearest = palette[0];
+	for (let i = 0; i < palette.length; i++) {
+		const color = palette[i];
+		const dr = r - color.r;
+		const dg = g - color.g;
+		const db = b - color.b;
+		const dist = dr * dr + dg * dg + db * db;
+		if (dist < minDist) {
+			minDist = dist;
+			nearest = color;
+		}
+	}
+	return nearest;
+}
+
+export function applyColorPalette(imageData: ImageData, paletteName: PaletteName): ImageData {
+	const palette = RETRO_PALETTES[paletteName];
+	if (!palette) return imageData;
+
+	const data = imageData.data;
+	const { width, height } = imageData;
+	const newData = new Uint8ClampedArray(data);
+
+	for (let i = 0; i < data.length; i += 4) {
+		const r = data[i];
+		const g = data[i + 1];
+		const b = data[i + 2];
+		const nearest = findNearestColor(r, g, b, palette);
+		newData[i] = nearest.r;
+		newData[i + 1] = nearest.g;
+		newData[i + 2] = nearest.b;
+	}
+
+	return new ImageData(newData, width, height);
+}
+
+export function applyDithering(
+	imageData: ImageData,
+	method: DitheringName,
+	paletteName?: 'None' | PaletteName
+): ImageData {
 	if (method === 'None') {
 		return imageData;
 	}
 
 	switch (method) {
 		case 'Floyd-Steinberg':
-			return floydSteinberg(imageData);
+			return floydSteinberg(imageData, paletteName);
 		case 'Atkinson':
-			return atkinson(imageData);
+			return atkinson(imageData, paletteName);
 		case 'Ordered':
-			return orderedDithering(imageData);
+			return orderedDithering(imageData, paletteName);
 		default:
 			return imageData;
 	}
 }
 
-// Applies a simple sharpening filter to an image using a 3x3 kernel.
 function applySharpness(imageData: ImageData, amount: number): ImageData {
 	const data = imageData.data;
 	const { width, height } = imageData;
@@ -166,13 +225,11 @@ function applySharpness(imageData: ImageData, amount: number): ImageData {
 	const factor = amount / 10;
 	const centerWeight = 1 + 4 * factor;
 
-	// Iterate over each pixel
 	for (let y = 1; y < height - 1; y++) {
 		const yOffset = y * width;
 		const yTopOffset = (y - 1) * width;
 		const yBottomOffset = (y + 1) * width;
 
-		// Iterate over each pixel in the row
 		for (let x = 1; x < width - 1; x++) {
 			const idx = (yOffset + x) * 4;
 			const idxTop = (yTopOffset + x) * 4;
@@ -180,15 +237,12 @@ function applySharpness(imageData: ImageData, amount: number): ImageData {
 			const idxLeft = (yOffset + (x - 1)) * 4;
 			const idxRight = (yOffset + (x + 1)) * 4;
 
-			// Iterate over each color channel
 			for (let c = 0; c < 3; c++) {
-				const center = data[idx + c];
-				const top = data[idxTop + c];
-				const bottom = data[idxBottom + c];
-				const left = data[idxLeft + c];
-				const right = data[idxRight + c];
-				const sharpened = center * centerWeight - (top + bottom + left + right) * factor;
-				newData[idx + c] = clampColor(sharpened);
+				const val =
+					data[idx + c] * centerWeight -
+					factor *
+						(data[idxTop + c] + data[idxBottom + c] + data[idxLeft + c] + data[idxRight + c]);
+				newData[idx + c] = Math.max(0, Math.min(255, val));
 			}
 		}
 	}
@@ -196,52 +250,26 @@ function applySharpness(imageData: ImageData, amount: number): ImageData {
 	return new ImageData(newData, width, height);
 }
 
-// Simple edge detection using Sobel operator
 function applyEdgeDetection(imageData: ImageData, strength: number): ImageData {
-	const data = imageData.data;
 	const { width, height } = imageData;
+	const data = imageData.data;
 	const newData = new Uint8ClampedArray(data);
-	const factor = (strength - 1) / 10;
+	const factor = strength * 2;
 
 	for (let y = 1; y < height - 1; y++) {
-		const yOffset = y * width;
-		const yTopOffset = (y - 1) * width;
-		const yBottomOffset = (y + 1) * width;
-
 		for (let x = 1; x < width - 1; x++) {
-			const idx = (yOffset + x) * 4;
-
-			// Pre-calculate all 8 neighbor indices
-			const idxTL = (yTopOffset + (x - 1)) * 4;
-			const idxT = (yTopOffset + x) * 4;
-			const idxTR = (yTopOffset + (x + 1)) * 4;
-			const idxL = (yOffset + (x - 1)) * 4;
-			const idxR = (yOffset + (x + 1)) * 4;
-			const idxBL = (yBottomOffset + (x - 1)) * 4;
-			const idxB = (yBottomOffset + x) * 4;
-			const idxBR = (yBottomOffset + (x + 1)) * 4;
+			const idx = (y * width + x) * 4;
 
 			for (let c = 0; c < 3; c++) {
-				// Sobel X gradient
-				const gx =
-					-1 * data[idxTL + c] +
-					1 * data[idxTR + c] +
-					-2 * data[idxL + c] +
-					2 * data[idxR + c] +
-					-1 * data[idxBL + c] +
-					1 * data[idxBR + c];
+				const val =
+					data[idx + c] * 4 -
+					data[((y - 1) * width + x) * 4 + c] -
+					data[((y + 1) * width + x) * 4 + c] -
+					data[(y * width + (x - 1)) * 4 + c] -
+					data[(y * width + (x + 1)) * 4 + c];
 
-				// Sobel Y gradient
-				const gy =
-					-1 * data[idxTL + c] +
-					-2 * data[idxT + c] +
-					-1 * data[idxTR + c] +
-					1 * data[idxBL + c] +
-					2 * data[idxB + c] +
-					1 * data[idxBR + c];
-
-				const magnitude = Math.sqrt(gx * gx + gy * gy);
-				newData[idx + c] = clampColor(data[idx + c] + magnitude * factor);
+				const edgeVal = Math.max(0, Math.min(255, Math.abs(val) * factor));
+				newData[idx + c] = Math.max(0, Math.min(255, data[idx + c] + edgeVal));
 			}
 		}
 	}
@@ -251,37 +279,166 @@ function applyEdgeDetection(imageData: ImageData, strength: number): ImageData {
 
 function applyThreshold(imageData: ImageData, threshold: number): ImageData {
 	const data = imageData.data;
-	const dataLength = data.length;
+	const { width, height } = imageData;
+	const newData = new Uint8ClampedArray(data);
 
-	// Use same perceptual luminance weights for consistency
-	const lumR = 0.299;
-	const lumG = 0.587;
-	const lumB = 0.114;
-
-	for (let i = 0; i < dataLength; i += 4) {
-		const gray = lumR * data[i] + lumG * data[i + 1] + lumB * data[i + 2];
-		const value = gray > threshold ? 255 : 0;
-		data[i] = data[i + 1] = data[i + 2] = value;
+	for (let i = 0; i < data.length; i += 4) {
+		const r = data[i];
+		const g = data[i + 1];
+		const b = data[i + 2];
+		const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
+		const val = brightness >= threshold ? 255 : 0;
+		newData[i] = val;
+		newData[i + 1] = val;
+		newData[i + 2] = val;
 	}
 
-	return imageData;
+	return new ImageData(newData, width, height);
 }
 
-// Dithering algorithms
+function floydSteinberg(imageData: ImageData, paletteName?: 'None' | PaletteName): ImageData {
+	const { width, height } = imageData;
+	const data = new Uint8ClampedArray(imageData.data);
+	const palette = paletteName && paletteName !== 'None' ? RETRO_PALETTES[paletteName] : null;
 
-function floydSteinberg(imageData: ImageData): ImageData {
-	// !TODO
-	return imageData;
+	for (let y = 0; y < height; y++) {
+		for (let x = 0; x < width; x++) {
+			const idx = (y * width + x) * 4;
+
+			const oldR = data[idx];
+			const oldG = data[idx + 1];
+			const oldB = data[idx + 2];
+
+			let newR, newG, newB;
+			if (palette) {
+				const nearest = findNearestColor(oldR, oldG, oldB, palette);
+				newR = nearest.r;
+				newG = nearest.g;
+				newB = nearest.b;
+			} else {
+				newR = oldR < 128 ? 0 : 255;
+				newG = oldG < 128 ? 0 : 255;
+				newB = oldB < 128 ? 0 : 255;
+			}
+
+			data[idx] = newR;
+			data[idx + 1] = newG;
+			data[idx + 2] = newB;
+
+			const errR = oldR - newR;
+			const errG = oldG - newG;
+			const errB = oldB - newB;
+
+			distributeError(data, width, height, x + 1, y, errR, errG, errB, 7 / 16);
+			distributeError(data, width, height, x - 1, y + 1, errR, errG, errB, 3 / 16);
+			distributeError(data, width, height, x, y + 1, errR, errG, errB, 5 / 16);
+			distributeError(data, width, height, x + 1, y + 1, errR, errG, errB, 1 / 16);
+		}
+	}
+
+	return new ImageData(data, width, height);
 }
 
-function atkinson(imageData: ImageData): ImageData {
-	// !TODO
-	return imageData;
+function atkinson(imageData: ImageData, paletteName?: 'None' | PaletteName): ImageData {
+	const { width, height } = imageData;
+	const data = new Uint8ClampedArray(imageData.data);
+	const palette = paletteName && paletteName !== 'None' ? RETRO_PALETTES[paletteName] : null;
+
+	for (let y = 0; y < height; y++) {
+		for (let x = 0; x < width; x++) {
+			const idx = (y * width + x) * 4;
+
+			const oldR = data[idx];
+			const oldG = data[idx + 1];
+			const oldB = data[idx + 2];
+
+			let newR, newG, newB;
+			if (palette) {
+				const nearest = findNearestColor(oldR, oldG, oldB, palette);
+				newR = nearest.r;
+				newG = nearest.g;
+				newB = nearest.b;
+			} else {
+				newR = oldR < 128 ? 0 : 255;
+				newG = oldG < 128 ? 0 : 255;
+				newB = oldB < 128 ? 0 : 255;
+			}
+
+			data[idx] = newR;
+			data[idx + 1] = newG;
+			data[idx + 2] = newB;
+
+			const errR = oldR - newR;
+			const errG = oldG - newG;
+			const errB = oldB - newB;
+
+			distributeError(data, width, height, x + 1, y, errR, errG, errB, 1 / 8);
+			distributeError(data, width, height, x + 2, y, errR, errG, errB, 1 / 8);
+			distributeError(data, width, height, x - 1, y + 1, errR, errG, errB, 1 / 8);
+			distributeError(data, width, height, x, y + 1, errR, errG, errB, 1 / 8);
+			distributeError(data, width, height, x + 1, y + 1, errR, errG, errB, 1 / 8);
+			distributeError(data, width, height, x, y + 2, errR, errG, errB, 1 / 8);
+		}
+	}
+
+	return new ImageData(data, width, height);
 }
 
-function orderedDithering(imageData: ImageData): ImageData {
-	// !TODO
-	return imageData;
+function orderedDithering(imageData: ImageData, paletteName?: 'None' | PaletteName): ImageData {
+	const { width, height } = imageData;
+	const data = new Uint8ClampedArray(imageData.data);
+	const palette = paletteName && paletteName !== 'None' ? RETRO_PALETTES[paletteName] : null;
+
+	const bayer = [
+		[0, 8, 2, 10],
+		[12, 4, 14, 6],
+		[3, 11, 1, 9],
+		[15, 7, 13, 5]
+	];
+
+	for (let y = 0; y < height; y++) {
+		const bayerRow = bayer[y % 4];
+		for (let x = 0; x < width; x++) {
+			const idx = (y * width + x) * 4;
+
+			const threshold = (bayerRow[x % 4] / 16 - 0.5) * 64;
+
+			const r = clampColor(data[idx] + threshold);
+			const g = clampColor(data[idx + 1] + threshold);
+			const b = clampColor(data[idx + 2] + threshold);
+
+			if (palette) {
+				const nearest = findNearestColor(r, g, b, palette);
+				data[idx] = nearest.r;
+				data[idx + 1] = nearest.g;
+				data[idx + 2] = nearest.b;
+			} else {
+				data[idx] = r > 128 ? 255 : 0;
+				data[idx + 1] = g > 128 ? 255 : 0;
+				data[idx + 2] = b > 128 ? 255 : 0;
+			}
+		}
+	}
+
+	return new ImageData(data, width, height);
+}
+
+function distributeError(
+	data: Uint8ClampedArray,
+	width: number,
+	height: number,
+	x: number,
+	y: number,
+	errR: number,
+	errG: number,
+	errB: number,
+	weight: number
+): void {
+	if (x < 0 || x >= width || y < 0 || y >= height) return;
+	const idx = (y * width + x) * 4;
+	data[idx] = clampColor(data[idx] + errR * weight);
+	data[idx + 1] = clampColor(data[idx + 1] + errG * weight);
+	data[idx + 2] = clampColor(data[idx + 2] + errB * weight);
 }
 
 const clampColor = (value: number) => Math.max(0, Math.min(255, value));
