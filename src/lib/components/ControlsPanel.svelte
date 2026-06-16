@@ -53,7 +53,8 @@
 		customTintColor = $bindable('#00ff00'),
 		actions,
 		onfileselect,
-		onreset
+		onreset,
+		isAskeyLoaded = false
 	} = $props<{
 		hasImage?: boolean;
 		hasError?: boolean;
@@ -94,6 +95,7 @@
 		actions?: Snippet;
 		onfileselect?: (file: File | null) => void;
 		onreset?: () => void;
+		isAskeyLoaded?: boolean;
 	}>();
 
 	let showBasicControls = $state(false);
@@ -189,296 +191,119 @@
 		/>
 	</div>
 
-	{#if hasImage && !hasError}
+		{#if hasImage && !hasError}
 		<div class="controls-grid">
-			<ControlSection title="Basic Settings" bind:isOpen={showBasicControls}>
-				<SliderControl
-					id="characters-control"
-					label="Characters"
-					min={20}
-					max={200}
-					bind:value={characters}
-				/>
-				<SelectControl
-					id="gradient-select"
-					label="ASCII Gradient"
-					bind:value={selectedGradient}
-					options={gradientOptions}
-				/>
-				<SliderControl
-					id="brightness-control"
-					label="Brightness"
-					min={0}
-					max={200}
-					bind:value={brightness}
-					format={(val) => `${val}%`}
-				/>
-				<SliderControl
-					id="contrast-control"
-					label="Contrast"
-					min={0}
-					max={200}
-					bind:value={contrast}
-					format={(val) => `${val}%`}
-				/>
-			</ControlSection>
+			{#if isAskeyLoaded}
+				<p class="askey-notice">This is a Pre-rendered .askey; image controls have no effect.</p>
 
-			<ControlSection title="Color Adjustments" bind:isOpen={showColorControls}>
-				<SliderControl
-					id="saturation-control"
-					label="Saturation"
-					min={0}
-					max={200}
-					bind:value={saturation}
-					format={(val) => `${val}%`}
-				/>
-				<SliderControl
-					id="hue-control"
-					label="Hue"
-					min={0}
-					max={360}
-					bind:value={hue}
-					format={(val) => `${val}°`}
-				/>
-				<SliderControl
-					id="grayscale-control"
-					label="Grayscale"
-					min={0}
-					max={100}
-					bind:value={grayscale}
-					format={(val) => `${val}%`}
-				/>
-				<SliderControl
-					id="sepia-control"
-					label="Sepia"
-					min={0}
-					max={100}
-					bind:value={sepia}
-					format={(val) => `${val}%`}
-				/>
-				<SliderControl
-					id="invert-control"
-					label="Invert Colors"
-					min={0}
-					max={100}
-					bind:value={invertColors}
-					format={(val) => `${val}%`}
-				/>
-				<SelectControl
-					id="palette-select"
-					label="Retro Palette"
-					bind:value={colorPalette}
-					options={[
-						{ value: 'None', label: 'None' },
-						{ value: 'c64', label: 'Commodore 64' },
-						{ value: 'gameboy', label: 'Game Boy' },
-						{ value: 'cga', label: 'CGA' },
-						{ value: 'nes', label: 'NES' },
-						{ value: 'pico8', label: 'PICO-8' }
-					]}
-				/>
-				<SliderControl
-					id="quantization-control"
-					label="Color Quantization"
-					min={1}
-					max={64}
-					step={1}
-					bind:value={colorQuantization}
-					format={(val) => (val === 1 ? 'None (Full Color)' : `Step ${val}`)}
-				/>
-				<div
-					class="control-row-full font-divider"
-					style="margin-top: 1rem; border-top: 1px dashed var(--border-color); padding-top: 1rem;"
-				>
-					<label class="control-toggle">
-						<span class="control-label">Custom Color Tint</span>
-						<input type="checkbox" bind:checked={customTintEnabled} />
-					</label>
-				</div>
-				{#if customTintEnabled}
-					<div
-						class="control-row"
-						style="display: flex; align-items: center; justify-content: space-between; margin-top: 0.75rem;"
-					>
-						<span class="control-label">Tint Color</span>
-						<div
-							class="color-picker-wrapper"
-							style="display: flex; align-items: center; gap: 0.5rem;"
-						>
-							<span
-								style="font-family: 'Inconsolata', monospace; font-size: 0.85rem; text-transform: uppercase; color: var(--text-secondary);"
-								>{customTintColor}</span
-							>
-							<input
-								type="color"
-								bind:value={customTintColor}
-								style="cursor: pointer; width: 28px; height: 28px; border: 1px solid var(--border-color); border-radius: 4px; background: none; padding: 0;"
-							/>
-						</div>
+				<ControlSection title="Effects" bind:isOpen={showEffectsControls}>
+					<div class="control-row-full font-divider" style="border-top: none; padding-top: 0;">
+						<label class="control-toggle">
+							<span class="control-label">Enable CRT Glow</span>
+							<input type="checkbox" bind:checked={crtGlowEnabled} />
+						</label>
 					</div>
-				{/if}
-			</ControlSection>
+					{#if crtGlowEnabled}
+						<SelectControl id="crt-preset-select" label="CRT Color Preset" bind:value={crtGlowPreset} options={[{ value: 'color', label: 'Color CRT (Original)' }, { value: 'green', label: 'Green Phosphor' }, { value: 'amber', label: 'Amber Terminal' }, { value: 'cyan', label: 'Cyberpunk Cyan' }]} />
+						<SliderControl id="crt-glow-intensity" label="Glow Intensity" min={1} max={5} step={0.5} bind:value={crtGlowIntensity} format={(val) => `${val.toFixed(1)}`} />
+						<SliderControl id="crt-scanline-intensity" label="Scanline Intensity" min={0} max={100} bind:value={crtScanlineIntensity} format={(val) => `${val}%`} />
+					{/if}
+					<div class="control-row-full font-divider" style="margin-top: 1rem; border-top: 1px dashed var(--border-color); padding-top: 1rem;">
+						<label class="control-toggle">
+							<span class="control-label">Experimental Mouse Hover</span>
+							<input type="checkbox" bind:checked={interactiveHover} />
+						</label>
+					</div>
+				</ControlSection>
 
-			<ControlSection title="Effects" bind:isOpen={showEffectsControls}>
-				<SliderControl
-					id="sharpness-control"
-					label="Sharpness"
-					min={0}
-					max={20}
-					step={0.1}
-					bind:value={sharpness}
-					format={(val) => `${val.toFixed(1)}`}
-				/>
-				<SliderControl
-					id="edge-control"
-					label="Edge Detection"
-					min={1}
-					max={10}
-					bind:value={edgeDetection}
-				/>
-				<SliderControl
-					id="threshold-control"
-					label="Thresholding"
-					min={0}
-					max={255}
-					bind:value={thresholding}
-				/>
-
-				<div
-					class="control-row-full font-divider"
-					style="margin-top: 1rem; border-top: 1px dashed var(--border-color); padding-top: 1rem;"
-				>
-					<label class="control-toggle">
-						<span class="control-label">Enable CRT Glow</span>
-						<input type="checkbox" bind:checked={crtGlowEnabled} />
-					</label>
-				</div>
-
-				{#if crtGlowEnabled}
-					<SelectControl
-						id="crt-preset-select"
-						label="CRT Color Preset"
-						bind:value={crtGlowPreset}
-						options={[
-							{ value: 'color', label: 'Color CRT (Original)' },
-							{ value: 'green', label: 'Green Phosphor' },
-							{ value: 'amber', label: 'Amber Terminal' },
-							{ value: 'cyan', label: 'Cyberpunk Cyan' }
-						]}
-					/>
-
-					<SliderControl
-						id="crt-glow-intensity"
-						label="Glow Intensity"
-						min={1}
-						max={5}
-						step={0.5}
-						bind:value={crtGlowIntensity}
-						format={(val) => `${val.toFixed(1)}`}
-					/>
-
-					<SliderControl
-						id="crt-scanline-intensity"
-						label="Scanline Intensity"
-						min={0}
-						max={100}
-						bind:value={crtScanlineIntensity}
-						format={(val) => `${val}%`}
-					/>
+				{#if isAnimatedImage}
+					<ControlSection title="Animation" bind:isOpen={showAnimationControls}>
+						<SliderControl id="animation-speed" label="Playback speed" min={0.25} max={10} step={0.25} bind:value={animationPlaybackSpeed} format={(val) => `${val.toFixed(2)}x`} />
+						<SliderControl id="phosphor-decay" label="Phosphor Decay" min={0} max={95} step={5} bind:value={phosphorDecay} format={(val) => (val === 0 ? 'Off' : `${val}%`)} />
+					</ControlSection>
 				{/if}
 
-				<div
-					class="control-row-full font-divider"
-					style="margin-top: 1rem; border-top: 1px dashed var(--border-color); padding-top: 1rem;"
-				>
-					<label class="control-toggle">
-						<span class="control-label">Experimental Mouse Hover</span>
-						<input type="checkbox" bind:checked={interactiveHover} />
-					</label>
-				</div>
-			</ControlSection>
+				<ControlSection title="Advanced" bind:isOpen={showAdvancedControls}>
+					<SelectControl id="render-mode-select" label="Render Mode" bind:value={renderMode} options={RENDER_MODE_OPTIONS} />
+					<SelectControl id="font-family-select" label="Font Type" bind:value={asciiFontFamily} options={fontOptions} />
+					<SliderControl id="font-size-control" label="Font Size" min={6} max={24} step={1} bind:value={asciiFontSize} format={(val) => `${val}px`} />
+				</ControlSection>
+			{:else}
+				<ControlSection title="Basic Settings" bind:isOpen={showBasicControls}>
+					<SliderControl id="characters-control" label="Characters" min={20} max={200} bind:value={characters} />
+					<SelectControl id="gradient-select" label="ASCII Gradient" bind:value={selectedGradient} options={gradientOptions} />
+					<SliderControl id="brightness-control" label="Brightness" min={0} max={200} bind:value={brightness} format={(val) => `${val}%`} />
+					<SliderControl id="contrast-control" label="Contrast" min={0} max={200} bind:value={contrast} format={(val) => `${val}%`} />
+				</ControlSection>
 
-			{#if isAnimatedImage}
-				<ControlSection title="Animation" bind:isOpen={showAnimationControls}>
-					<SliderControl
-						id="animation-frame-limit"
-						label="Frame limit"
-						min={2}
-						max={500}
-						step={1}
-						bind:value={animationFrameLimit}
-					/>
-					<SliderControl
-						id="animation-frame-skip"
-						label="Frame skip"
-						min={1}
-						max={10}
-						step={1}
-						bind:value={animationFrameSkip}
-						format={(val) => `Every ${val} frame${val === 1 ? '' : 's'}`}
-					/>
-					<SliderControl
-						id="animation-speed"
-						label="Playback speed"
-						min={0.25}
-						max={10}
-						step={0.25}
-						bind:value={animationPlaybackSpeed}
-						format={(val) => `${val.toFixed(2)}x`}
-					/>
-					<SliderControl
-						id="phosphor-decay"
-						label="Phosphor Decay"
-						min={0}
-						max={95}
-						step={5}
-						bind:value={phosphorDecay}
-						format={(val) => (val === 0 ? 'Off' : `${val}%`)}
-					/>
+				<ControlSection title="Color Adjustments" bind:isOpen={showColorControls}>
+					<SliderControl id="saturation-control" label="Saturation" min={0} max={200} bind:value={saturation} format={(val) => `${val}%`} />
+					<SliderControl id="hue-control" label="Hue" min={0} max={360} bind:value={hue} format={(val) => `${val}°`} />
+					<SliderControl id="grayscale-control" label="Grayscale" min={0} max={100} bind:value={grayscale} format={(val) => `${val}%`} />
+					<SliderControl id="sepia-control" label="Sepia" min={0} max={100} bind:value={sepia} format={(val) => `${val}%`} />
+					<SliderControl id="invert-control" label="Invert Colors" min={0} max={100} bind:value={invertColors} format={(val) => `${val}%`} />
+					<SelectControl id="palette-select" label="Retro Palette" bind:value={colorPalette} options={[{ value: 'None', label: 'None' }, { value: 'c64', label: 'Commodore 64' }, { value: 'gameboy', label: 'Game Boy' }, { value: 'cga', label: 'CGA' }, { value: 'nes', label: 'NES' }, { value: 'pico8', label: 'PICO-8' }]} />
+					<SliderControl id="quantization-control" label="Color Quantization" min={1} max={64} step={1} bind:value={colorQuantization} format={(val) => (val === 1 ? 'None (Full Color)' : `Step ${val}`)} />
+					<div class="control-row-full font-divider" style="margin-top: 1rem; border-top: 1px dashed var(--border-color); padding-top: 1rem;">
+						<label class="control-toggle">
+							<span class="control-label">Custom Color Tint</span>
+							<input type="checkbox" bind:checked={customTintEnabled} />
+						</label>
+					</div>
+					{#if customTintEnabled}
+						<div class="control-row" style="display: flex; align-items: center; justify-content: space-between; margin-top: 0.75rem;">
+							<span class="control-label">Tint Color</span>
+							<div class="color-picker-wrapper" style="display: flex; align-items: center; gap: 0.5rem;">
+								<span style="font-family: 'Inconsolata', monospace; font-size: 0.85rem; text-transform: uppercase; color: var(--text-secondary);">{customTintColor}</span>
+								<input type="color" bind:value={customTintColor} style="cursor: pointer; width: 28px; height: 28px; border: 1px solid var(--border-color); border-radius: 4px; background: none; padding: 0;" />
+							</div>
+						</div>
+					{/if}
+				</ControlSection>
+
+				<ControlSection title="Effects" bind:isOpen={showEffectsControls}>
+					<SliderControl id="sharpness-control" label="Sharpness" min={0} max={20} step={0.1} bind:value={sharpness} format={(val) => `${val.toFixed(1)}`} />
+					<SliderControl id="edge-control" label="Edge Detection" min={1} max={10} bind:value={edgeDetection} />
+					<SliderControl id="threshold-control" label="Thresholding" min={0} max={255} bind:value={thresholding} />
+					<div class="control-row-full font-divider" style="margin-top: 1rem; border-top: 1px dashed var(--border-color); padding-top: 1rem;">
+						<label class="control-toggle">
+							<span class="control-label">Enable CRT Glow</span>
+							<input type="checkbox" bind:checked={crtGlowEnabled} />
+						</label>
+					</div>
+					{#if crtGlowEnabled}
+						<SelectControl id="crt-preset-select" label="CRT Color Preset" bind:value={crtGlowPreset} options={[{ value: 'color', label: 'Color CRT (Original)' }, { value: 'green', label: 'Green Phosphor' }, { value: 'amber', label: 'Amber Terminal' }, { value: 'cyan', label: 'Cyberpunk Cyan' }]} />
+						<SliderControl id="crt-glow-intensity" label="Glow Intensity" min={1} max={5} step={0.5} bind:value={crtGlowIntensity} format={(val) => `${val.toFixed(1)}`} />
+						<SliderControl id="crt-scanline-intensity" label="Scanline Intensity" min={0} max={100} bind:value={crtScanlineIntensity} format={(val) => `${val}%`} />
+					{/if}
+					<div class="control-row-full font-divider" style="margin-top: 1rem; border-top: 1px dashed var(--border-color); padding-top: 1rem;">
+						<label class="control-toggle">
+							<span class="control-label">Experimental Mouse Hover</span>
+							<input type="checkbox" bind:checked={interactiveHover} />
+						</label>
+					</div>
+				</ControlSection>
+
+				{#if isAnimatedImage}
+					<ControlSection title="Animation" bind:isOpen={showAnimationControls}>
+						<SliderControl id="animation-frame-limit" label="Frame limit" min={2} max={500} step={1} bind:value={animationFrameLimit} />
+						<SliderControl id="animation-frame-skip" label="Frame skip" min={1} max={10} step={1} bind:value={animationFrameSkip} format={(val) => `Every ${val} frame${val === 1 ? '' : 's'}`} />
+						<SliderControl id="animation-speed" label="Playback speed" min={0.25} max={10} step={0.25} bind:value={animationPlaybackSpeed} format={(val) => `${val.toFixed(2)}x`} />
+						<SliderControl id="phosphor-decay" label="Phosphor Decay" min={0} max={95} step={5} bind:value={phosphorDecay} format={(val) => (val === 0 ? 'Off' : `${val}%`)} />
+					</ControlSection>
+				{/if}
+
+				<ControlSection title="Advanced" bind:isOpen={showAdvancedControls}>
+					<SelectControl id="render-mode-select" label="Render Mode" bind:value={renderMode} options={RENDER_MODE_OPTIONS} />
+					<SelectControl id="font-family-select" label="Font Type" bind:value={asciiFontFamily} options={fontOptions} />
+					<SliderControl id="font-size-control" label="Font Size" min={6} max={24} step={1} bind:value={asciiFontSize} format={(val) => `${val}px`} />
+					<SliderControl id="space-density-control" label="Space Density" min={0} max={1} step={0.1} bind:value={spaceDensity} format={(val) => `${val.toFixed(1)}`} />
+					<SelectControl id="dithering-select" label="Dithering Method" bind:value={ditheringMethod} options={ditheringOptions} />
 				</ControlSection>
 			{/if}
 
-			<ControlSection title="Advanced" bind:isOpen={showAdvancedControls}>
-				<SelectControl
-					id="render-mode-select"
-					label="Render Mode"
-					bind:value={renderMode}
-					options={RENDER_MODE_OPTIONS}
-				/>
-				<SelectControl
-					id="font-family-select"
-					label="Font Type"
-					bind:value={asciiFontFamily}
-					options={fontOptions}
-				/>
-				<SliderControl
-					id="font-size-control"
-					label="Font Size"
-					min={6}
-					max={24}
-					step={1}
-					bind:value={asciiFontSize}
-					format={(val) => `${val}px`}
-				/>
-				<SliderControl
-					id="space-density-control"
-					label="Space Density"
-					min={0}
-					max={1}
-					step={0.1}
-					bind:value={spaceDensity}
-					format={(val) => `${val.toFixed(1)}`}
-				/>
-				<SelectControl
-					id="dithering-select"
-					label="Dithering Method"
-					bind:value={ditheringMethod}
-					options={ditheringOptions}
-				/>
-			</ControlSection>
+			{@render actions?.()}
 		</div>
-
-		{@render actions?.()}
 	{/if}
 </section>
 
@@ -654,6 +479,14 @@
 		border: 0;
 	}
 
+	.askey-notice {
+		font-size: 0.8125rem;
+		color: var(--text-secondary);
+		border-left: 2px solid var(--border-color);
+		padding: 0.35rem 0.6rem;
+		margin-bottom: 0.25rem;
+	}
+
 	.controls-grid {
 		display: flex;
 		flex-direction: column;
@@ -661,6 +494,7 @@
 		width: 100%;
 		min-width: 0;
 	}
+
 
 	@media (min-width: 768px) {
 		.controls-grid {

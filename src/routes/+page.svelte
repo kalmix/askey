@@ -56,6 +56,7 @@
 	let errorMessage = $state<string>('');
 	let hasError = $state(false);
 	let useCanvasRenderer = $state(true);
+	let isAskeyLoaded = $state(false);
 	let isExporting = $state(false);
 	let exportProgress = $state(0);
 	let exportType = $state<'gif' | 'apng' | null>(null);
@@ -216,7 +217,64 @@
 		}
 	});
 
+	async function parseAskeyFile(blob: Blob): Promise<ConvertedAsciiFrame[]> {
+		let text: string;
+		try {
+			const ds = new DecompressionStream('gzip');
+			const decompressed = blob.stream().pipeThrough(ds);
+			text = await new Response(decompressed).text();
+		} catch {
+			text = await blob.text();
+		}
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const data: Record<string, any> = JSON.parse(text);
+		const palette: Record<string, string> = data.p ?? {};
+		const rawFrames: unknown[] = data.fr ?? [];
+		const commonDelay: number | undefined = data.d;
+
+		function decodeFrame(raw: unknown, delay: number): ConvertedAsciiFrame {
+			let content = typeof raw === 'string' ? raw : (raw as { c: string }).c;
+			const frameDelay = typeof raw === 'object' && raw !== null && 'd' in raw
+				? (raw as { d: number }).d
+				: delay;
+			content = content.replace(/\{(\w+):([^}]*)\}/g, (_: string, key: string, chars: string) => {
+				const color = palette[key] ?? key;
+				return `<span style="color: ${color}">${chars}</span>`;
+			});
+			return { ascii: content, delay: frameDelay };
+		}
+
+		return rawFrames.map((f) => decodeFrame(f, commonDelay ?? 100));
+	}
+
+	async function handleLoadTestAnimation() {
+		isProcessing = true;
+		errorMessage = '';
+		hasError = false;
+		try {
+			const res = await fetch('/anim/bw-spirals.askey');
+			if (!res.ok) throw new Error('Failed to fetch test animation');
+			const blob = await res.blob();
+			const frames = await parseAskeyFile(blob);
+			asciiFrames = frames;
+			asciiOutput = frames[0]?.ascii ?? '';
+			isAnimatedImage = frames.length > 1;
+			imageName = 'bw-spirals';
+			isAskeyLoaded = true;
+			imageUrl = 'askey://bw-spirals';
+		} catch (err) {
+			errorMessage = err instanceof Error ? err.message : 'Failed to load test animation';
+			hasError = true;
+		} finally {
+			isProcessing = false;
+		}
+	}
+
+
 	async function handleFileSelection(file: File | null) {
+
+		isAskeyLoaded = false;
+
 		if (activeObjectUrl) {
 			URL.revokeObjectURL(activeObjectUrl);
 			activeObjectUrl = null;
@@ -329,7 +387,7 @@
 	}
 
 	$effect(() => {
-		if (!imageUrl) return;
+		if (!imageUrl || isAskeyLoaded) return;
 		void characters;
 		void brightness;
 		void contrast;
@@ -700,6 +758,7 @@
 			bind:customTintColor
 			onfileselect={(file) => handleFileSelection(file)}
 			onreset={resetControls}
+			{isAskeyLoaded}
 		>
 			{#snippet actions()}
 				<div class="actions-bar">
@@ -760,6 +819,7 @@
 			onexport={handleExportAnimation}
 			ondismissError={handleDismissError}
 			oncancel={handleCancelExport}
+			onloadtest={handleLoadTestAnimation}
 			{crtGlowEnabled}
 			{crtGlowPreset}
 			{crtGlowIntensity}

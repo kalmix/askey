@@ -22,6 +22,7 @@
 		onexport?: () => void;
 		ondismissError?: (index: number) => void;
 		oncancel?: () => void;
+		onloadtest?: () => void;
 		crtGlowEnabled?: boolean;
 		crtGlowPreset?: 'color' | 'green' | 'amber' | 'cyan';
 		crtGlowIntensity?: number;
@@ -48,6 +49,7 @@
 		onexport,
 		ondismissError,
 		oncancel,
+		onloadtest,
 		crtGlowEnabled = false,
 		crtGlowPreset = 'color',
 		crtGlowIntensity = 3,
@@ -496,6 +498,9 @@
 		{:else}
 			<div class="empty-state">
 				<p>Upload an image/sequence to get started <br /> (Drag and drop supported)</p>
+				<div class="empty-state-actions">
+					<button class="empty-btn" onclick={onloadtest} id="btn-load-test-animation">Load Test Animation</button>
+				</div>
 			</div>
 		{/if}
 	</div>
@@ -504,7 +509,6 @@
 		<svg style="position: absolute; width: 0; height: 0; pointer-events: none;" aria-hidden="true">
 			<defs>
 				<filter id="crt-glow">
-					<!-- 1. Chromatic Aberration RGB split on SourceGraphic -->
 					<feColorMatrix
 						type="matrix"
 						values="
@@ -778,6 +782,50 @@
 		color: var(--output-text-secondary);
 		font-size: 0.9375rem;
 		padding: 1rem;
+	}
+
+	.empty-state-actions {
+		display: flex;
+		gap: 0.5rem;
+		justify-content: center;
+		flex-wrap: wrap;
+		margin-top: 1rem;
+	}
+
+	.empty-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
+		padding: 0.5rem 0.75rem;
+		min-height: 44px;
+		background: var(--output-bg-secondary);
+		border: 1px solid var(--output-border-color);
+		color: var(--output-text-primary);
+		cursor: pointer;
+		font-size: 0.875rem;
+		font-weight: 500;
+		font-family: 'Inconsolata', monospace;
+		transition: all 0.2s ease;
+		white-space: nowrap;
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	.empty-btn:hover {
+		background: var(--output-bg-tertiary);
+		border-color: var(--gray-500);
+		transform: translateY(-1px);
+	}
+
+	@media (hover: none) {
+		.empty-btn:hover {
+			transform: none;
+			background: var(--output-bg-secondary);
+		}
+
+		.empty-btn:active {
+			transform: scale(0.98);
+			background: var(--output-bg-tertiary);
+		}
 	}
 
 	@media (min-width: 768px) {
