@@ -71,17 +71,17 @@ The dev server hot-reloads when you edit files inside `src/`. Use `npm run check
 
 - [x] "Universal" export file for ASCII animations.
 - [x] Offline support with service workers.
-- [x] C# terminal player for `.askey` files. (see: [askey-cli](#askey-cli))
-- [ ] Implement dithering algorithms options.
+- [x] Rust terminal player for `.askey` files. (see: [askey-cli](#askey-cli))
+- [x] Implement dithering algorithms options.
 - [x] Fix render bug in certain animations with certain backgrounds/complex color combinations.
-- [ ] Increased test coverage.
+- [x] Increased test coverage.
 - [ ] Animated WebP support.
 - [ ] Video support maybe?
 - [ ] Build a site to share and download asꄗ animations.
 
 ## asꄗ cli (comming soon)
 
-A .NET CLI tool will be available to run ASCII animations directly in the terminal using exported `.askey` files.
+A Rust CLI tool will be available to run ASCII animations directly in the terminal using exported `.askey` files.
 
 ## ⛃ Tech stack
 
